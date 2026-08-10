@@ -87,31 +87,107 @@ def _parse_outcome(content: str) -> Optional[str]:
     return None
 
 
-def _distill_lesson_text(prompt: str, action_str: str, feedback: str) -> str:
-    """Distill a completed turn into a compact, retrieval-friendly lesson.
+def _extract_opponent(prompt: str) -> Optional[str]:
+    """Extract the opponent name from a poker prompt."""
+    for line in prompt.split("\n"):
+        if "Opponent:" in line:
+            rest = line.split("Opponent:")[1].strip()
+            return rest.split()[0] if rest else None
+    return None
 
-    Keeps the full outcome context (which is what a future instance's
-    retrieval key will be most similar to) and the agent's own action, so the
-    lesson reads like an opponent-model update a future turn can reuse.
+
+def _distill_lesson_text(prompt: str, action_str: str, feedback: str) -> str:
+    """Distill a completed hand into a STRATEGIC opponent-model lesson.
+
+    The key insight: poker hands have unique cards, but opponent BEHAVIOR is
+    deterministic. The lesson captures what the opponent DID across the betting
+    rounds — did they reach showdown (never fold), what did they show down
+    (strong/weak), and what streets were seen. These signals reveal the fixed
+    policy and are reusable across all future hands against the same opponent.
     """
-    # Truncate the raw prompt to keep lessons bounded; the task prompt is the
-    # richest signal for retrieval (stage notice, hole cards, board, history).
-    prompt_excerpt = prompt.strip()
-    feedback_excerpt = feedback.strip()
-    return (
-        f"Prior instance:\n"
-        f"PROMPT: {prompt_excerpt}\n"
-        f"MY ACTION: {action_str}\n"
-        f"OUTCOME: {feedback_excerpt}"
-    )
+    import json as _json
+    opponent = _extract_opponent(prompt) or "unknown"
+
+    # Parse the agent's action from the last step
+    agent_action = "?"
+    try:
+        ad = _json.loads(action_str) if isinstance(action_str, str) else {}
+        agent_action = ad.get("action", "?")
+    except Exception:
+        pass
+
+    feedback_lower = feedback.lower()
+
+    # Core strategic signals from the feedback:
+    # 1. Did the hand reach showdown? (opponent never folds = calling station)
+    # 2. What did they show? (strong/weak hand at showdown)
+    # 3. How many streets were played? (from board card count)
+    reached_showdown = "showdown" in feedback_lower
+
+    # Extract opponent's shown hand if available
+    opp_shown = ""
+    for line in feedback.split("\n"):
+        if "opponent" in line.lower() and "hand" in line.lower():
+            opp_shown = line.strip()
+            break
+
+    # Count streets from board (preflop=0, flop=3, turn=4, river=5)
+    streets = 0
+    for line in feedback.split("\n"):
+        if "board:" in line.lower() and "showdown" not in line.lower():
+            card_count = line.count("[")
+            streets = min(card_count, 5)
+            break
+    # Also check showdown board
+    if streets == 0:
+        for line in feedback.split("\n"):
+            if "board:" in line.lower():
+                card_count = line.count("[")
+                streets = min(card_count, 5)
+                break
+
+    # Outcome
+    outcome = "unknown"
+    if "won" in feedback_lower:
+        outcome = "won"
+    elif "lost" in feedback_lower:
+        outcome = "lost"
+    elif "tied" in feedback_lower:
+        outcome = "tied"
+
+    # Net chip change
+    net_change = ""
+    for line in feedback.split("\n"):
+        if "net chip change" in line.lower():
+            net_change = line.strip()
+            break
+
+    # Build a concise strategic summary
+    parts = [f"Opponent {opponent}:"]
+    if reached_showdown:
+        parts.append(f"reached showdown (saw {streets} board cards, never folded)")
+    else:
+        parts.append("hand ended before showdown")
+    if opp_shown:
+        parts.append(opp_shown)
+    parts.append(f"my last action: {agent_action}")
+    parts.append(f"result: {outcome}. {net_change}")
+
+    return ". ".join(parts)
 
 
 def _build_retrieval_key(prompt: str, last_turn_feedback: Optional[str]) -> str:
-    """Build the query used to retrieve relevant lessons for this turn."""
-    if last_turn_feedback:
-        # Within-instance multi-step: prior feedback is the strongest signal.
-        return f"{last_turn_feedback}\n{prompt}"
-    return prompt
+    """Build the query used to retrieve relevant lessons.
+
+    For poker, the retrieval key is just the opponent name — we want ALL
+    strategic lessons about this opponent, not lessons that happened to involve
+    similar cards (which are irrelevant since cards change every hand).
+    """
+    opponent = _extract_opponent(prompt)
+    if opponent:
+        return f"Opponent {opponent} strategy tendencies behavior calling folding raising"
+    # Non-poker fallback: use the prompt directly.
+    return prompt[:300]
 
 
 # ---------------------------------------------------------------------------
@@ -166,10 +242,12 @@ class MubitMemorySystem(ContinualLearningSystem):
         self.interaction_count: int = 0
         self._last_query: Optional[Query] = None
         self._last_response: Optional[Response] = None
-        # Feedback from the previous turn within the current instance; used to
-        # enrich the retrieval key on the next turn and to build the lesson at
-        # the instance boundary. Cleared at boundaries.
+        # Feedback from the previous turn within the current instance.
         self._last_turn_feedback: Optional[str] = None
+        # True at the start of a new instance (hand) — controls when lessons
+        # are injected. Set by observe() at instance completion, cleared by
+        # respond() after the first turn of the new instance.
+        self._at_instance_boundary: bool = True
 
         # Mubit client + run scoping (lazily connected so the class can be
         # introspected/imported without a running instance).
@@ -223,7 +301,16 @@ class MubitMemorySystem(ContinualLearningSystem):
     def respond(self, query: Query) -> Response:
         self.interaction_count += 1
 
-        retrieved = self._retrieve_lessons(query)
+        # Only retrieve/inject lessons at the START of a new instance (hand).
+        # _at_instance_boundary is set True by observe() when the previous
+        # instance completed, and cleared after the first respond() of the new
+        # instance. This prevents injecting the same lessons on every betting
+        # round within the same hand.
+        if self._at_instance_boundary:
+            retrieved = self._retrieve_lessons(query)
+        else:
+            retrieved = []
+        self._at_instance_boundary = False
         query_content = self._inject_memory(query.prompt, retrieved)
 
         self._add_message("user", query_content)
@@ -277,8 +364,7 @@ class MubitMemorySystem(ContinualLearningSystem):
         instance_complete = observation_marks_instance_complete(observation)
         content = observation.content.strip()
 
-        # Carry the last within-instance feedback forward to enrich retrieval
-        # on the next turn (within the same instance).
+        # Carry the last within-instance feedback forward for in-hand context.
         self._last_turn_feedback = content or None
 
         # Store a lesson only at instance completion, when we have a full
@@ -290,10 +376,12 @@ class MubitMemorySystem(ContinualLearningSystem):
         if content:
             self._add_message("user", f"FEEDBACK: {content}")
 
-        # Clear per-instance conversation context at boundaries.
+        # Clear per-instance conversation context at boundaries and flag the
+        # next respond() to inject lessons (start of a new hand).
         if instance_complete:
             self.messages = []
             self._last_turn_feedback = None
+            self._at_instance_boundary = True
 
     def reset(self) -> None:
         # Fresh run_id wipes effective memory for the baseline phase without
@@ -305,6 +393,7 @@ class MubitMemorySystem(ContinualLearningSystem):
         self._last_query = None
         self._last_response = None
         self._last_turn_feedback = None
+        self._at_instance_boundary = True
 
     @property
     def name(self) -> str:
@@ -362,7 +451,9 @@ class MubitMemorySystem(ContinualLearningSystem):
             return prompt
         lines = []
         for i, m in enumerate(lessons, 1):
-            lines.append(f"{i}. {m['text']}")
+            # Truncate each lesson to keep the block concise and scannable.
+            text = m["text"][:300]
+            lines.append(f"  {i}. {text}")
         block = f"{MEMORY_BLOCK_HEADER}\n" + "\n".join(lines) + f"\n{MEMORY_BLOCK_FOOTER}"
         return f"{block}\n\n{prompt}"
 
@@ -379,28 +470,25 @@ class MubitMemorySystem(ContinualLearningSystem):
         )
         outcome = _parse_outcome(feedback) or "neutral"
         lesson_text = _distill_lesson_text(query.prompt, action_str, feedback)
+        opponent = _extract_opponent(query.prompt) or "unknown"
 
         lesson_type = (
             "success" if outcome == "won" else "failure" if outcome == "lost" else "observation"
         )
         importance = "high" if outcome in ("won", "lost") else "medium"
 
-        # Stable upsert key per opponent/stage: repeated hands refine rather
-        # than duplicate. Fall back to instance_id which is stable per hand.
-        upsert_key = f"lesson:{query.instance_id or uuid.uuid4().hex[:8]}"
+        # Key by opponent + outcome so each opponent accumulates a running
+        # model from wins and losses separately. Each new hand with the same
+        # opponent+outcome overwrites, keeping the freshest strategic read.
+        upsert_key = f"lesson:{opponent}:{outcome}"
 
         metadata: dict[str, Any] = {
             "task": "exploitable_poker",
+            "opponent": opponent,
             "instance_id": query.instance_id,
             "instance_index": query.instance_index,
             "outcome": outcome,
         }
-        # Surface the variant/stage from metadata if the task provides it.
-        if query.metadata:
-            for k in ("variant", "stage", "opponent_name", "variant_id"):
-                v = query.metadata.get(k)
-                if v is not None:
-                    metadata[k] = str(v)
 
         try:
             self._client.remember(
@@ -413,7 +501,6 @@ class MubitMemorySystem(ContinualLearningSystem):
                 metadata=metadata,
                 source="agent",
                 agent_id="clbench-mubit",
-                # wait=False keeps the hot loop snappy; ingest is durable.
                 wait=False,
             )
         except Exception:
