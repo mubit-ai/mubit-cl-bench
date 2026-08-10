@@ -96,19 +96,81 @@ def _extract_opponent(prompt: str) -> Optional[str]:
     return None
 
 
-def _distill_lesson_text(prompt: str, action_str: str, feedback: str) -> str:
-    """Distill a completed hand into a STRATEGIC opponent-model lesson.
+def _detect_task(prompt: str) -> str:
+    """Detect which CL-Bench task this prompt belongs to."""
+    if "--- Scan" in prompt and "Detected peaks:" in prompt:
+        return "bsm"
+    if "Opponent:" in prompt and ("FOLD" in prompt or "CALL" in prompt or "RAISE" in prompt):
+        return "poker"
+    if "SQL" in prompt or "sqlite" in prompt.lower() or "exploratory queries" in prompt.lower():
+        return "database"
+    return "generic"
 
-    The key insight: poker hands have unique cards, but opponent BEHAVIOR is
-    deterministic. The lesson captures what the opponent DID across the betting
-    rounds — did they reach showdown (never fold), what did they show down
-    (strong/weak), and what streets were seen. These signals reveal the fixed
-    policy and are reusable across all future hands against the same opponent.
+
+def _distill_bsm_lesson(prompt: str, action_str: str, feedback: str) -> str:
+    """Distill a BSM scan into a transmitter-observation lesson.
+
+    Extracts the detected peaks (what the agent SAW this scan) and the
+    transmitters the agent REPORTED. These accumulate across scans to build
+    a running map of the persistent channel set — including dormant channels
+    that aren't visible in every scan.
     """
+    import json as _json
+    import re
+
+    # Extract detected peaks from the prompt
+    peaks = []
+    for match in re.finditer(r"freq:\s*([\d.]+)\s*MHz.*?power:\s*([-\d.]+)\s*dBm.*?width:\s*([\d.]+)\s*MHz", prompt):
+        peaks.append({"freq": float(match.group(1)), "power": float(match.group(2)), "width": float(match.group(3))})
+
+    # Extract scan number
+    scan_num = "?"
+    m = re.search(r"Scan (\d+)/", prompt)
+    if m:
+        scan_num = m.group(1)
+
+    # Parse the agent's reported transmitters
+    reported = []
+    try:
+        ad = _json.loads(action_str) if isinstance(action_str, str) else {}
+        for tx in ad.get("transmitters", []):
+            reported.append(f"{tx.get('center_freq','?')}MHz/{tx.get('bandwidth','?')}MHz")
+    except Exception:
+        pass
+
+    peak_strs = [f"{p['freq']:.1f}MHz/{p['width']:.0f}MHz/{p['power']:.0f}dBm" for p in peaks]
+    reported_strs = reported[:10]  # cap
+
+    return (
+        f"Scan {scan_num}: detected {len(peaks)} peaks: [{', '.join(peak_strs[:8])}]. "
+        f"Reported {len(reported)} transmitters: [{', '.join(reported_strs[:8])}]. "
+        f"Accumulate dormant channels — they may not appear in every scan."
+    )
+
+
+def _distill_lesson_text(prompt: str, action_str: str, feedback: str) -> str:
+    """Task-aware lesson distillation.
+
+    Detects the task type and delegates to the appropriate distiller. For
+    tasks without a specialised distiller, falls back to a generic summary.
+    """
+    task = _detect_task(prompt)
+
+    if task == "bsm":
+        return _distill_bsm_lesson(prompt, action_str, feedback)
+
+    if task == "poker":
+        return _distill_poker_lesson(prompt, action_str, feedback)
+
+    # Generic fallback
+    return _distill_generic_lesson(prompt, action_str, feedback)
+
+
+def _distill_poker_lesson(prompt: str, action_str: str, feedback: str) -> str:
+    """Poker-specific strategic lesson (see _distill_lesson_text docs)."""
     import json as _json
     opponent = _extract_opponent(prompt) or "unknown"
 
-    # Parse the agent's action from the last step
     agent_action = "?"
     try:
         ad = _json.loads(action_str) if isinstance(action_str, str) else {}
@@ -117,76 +179,69 @@ def _distill_lesson_text(prompt: str, action_str: str, feedback: str) -> str:
         pass
 
     feedback_lower = feedback.lower()
-
-    # Core strategic signals from the feedback:
-    # 1. Did the hand reach showdown? (opponent never folds = calling station)
-    # 2. What did they show? (strong/weak hand at showdown)
-    # 3. How many streets were played? (from board card count)
     reached_showdown = "showdown" in feedback_lower
 
-    # Extract opponent's shown hand if available
     opp_shown = ""
     for line in feedback.split("\n"):
         if "opponent" in line.lower() and "hand" in line.lower():
             opp_shown = line.strip()
             break
 
-    # Count streets from board (preflop=0, flop=3, turn=4, river=5)
-    streets = 0
-    for line in feedback.split("\n"):
-        if "board:" in line.lower() and "showdown" not in line.lower():
-            card_count = line.count("[")
-            streets = min(card_count, 5)
-            break
-    # Also check showdown board
-    if streets == 0:
-        for line in feedback.split("\n"):
-            if "board:" in line.lower():
-                card_count = line.count("[")
-                streets = min(card_count, 5)
-                break
-
-    # Outcome
     outcome = "unknown"
     if "won" in feedback_lower:
         outcome = "won"
     elif "lost" in feedback_lower:
         outcome = "lost"
-    elif "tied" in feedback_lower:
-        outcome = "tied"
 
-    # Net chip change
     net_change = ""
     for line in feedback.split("\n"):
         if "net chip change" in line.lower():
             net_change = line.strip()
             break
 
-    # Build a concise strategic summary
     parts = [f"Opponent {opponent}:"]
     if reached_showdown:
-        parts.append(f"reached showdown (saw {streets} board cards, never folded)")
+        parts.append("reached showdown (never folded)")
     else:
         parts.append("hand ended before showdown")
     if opp_shown:
         parts.append(opp_shown)
     parts.append(f"my last action: {agent_action}")
     parts.append(f"result: {outcome}. {net_change}")
+    return ". ".join(parts)
 
+
+def _distill_generic_lesson(prompt: str, action_str: str, feedback: str) -> str:
+    """Generic lesson distiller for tasks without specialised logic."""
+    action_short = action_str[:200] if isinstance(action_str, str) else str(action_str)[:200]
+    feedback_short = feedback[:200] if feedback else ""
+    return f"Prior instance feedback: {feedback_short}. My action: {action_short}"
+
+    # Build a concise strategic summary
+    parts = [f"Opponent {opponent}:"]
     return ". ".join(parts)
 
 
 def _build_retrieval_key(prompt: str, last_turn_feedback: Optional[str]) -> str:
     """Build the query used to retrieve relevant lessons.
 
-    For poker, the retrieval key is just the opponent name — we want ALL
-    strategic lessons about this opponent, not lessons that happened to involve
-    similar cards (which are irrelevant since cards change every hand).
+    Task-aware: for poker, key on opponent name; for BSM, key on the current
+    scan's detected peaks (to find prior scans with similar transmitters);
+    for other tasks, use the prompt directly.
     """
-    opponent = _extract_opponent(prompt)
-    if opponent:
-        return f"Opponent {opponent} strategy tendencies behavior calling folding raising"
-    # Non-poker fallback: use the prompt directly.
+    task = _detect_task(prompt)
+    if task == "poker":
+        opponent = _extract_opponent(prompt)
+        if opponent:
+            return f"Opponent {opponent} strategy tendencies behavior calling folding raising"
+    if task == "bsm":
+        # Use the detected peaks from this scan as the retrieval key — this
+        # surfaces prior scans that observed similar frequencies.
+        import re
+        freqs = re.findall(r"freq:\s*([\d.]+)\s*MHz", prompt)
+        if freqs:
+            return f"Spectrum scan detected peaks at: {', '.join(freqs[:8])} MHz. Transmitter observations."
+        return "Spectrum monitoring transmitter observations dormant channels"
     return prompt[:300]
 
 
@@ -470,17 +525,21 @@ class MubitMemorySystem(ContinualLearningSystem):
         )
         outcome = _parse_outcome(feedback) or "neutral"
         lesson_text = _distill_lesson_text(query.prompt, action_str, feedback)
-        opponent = _extract_opponent(query.prompt) or "unknown"
+        task_type = _detect_task(query.prompt)
+        opponent = _extract_opponent(query.prompt) if task_type == "poker" else None
 
         lesson_type = (
             "success" if outcome == "won" else "failure" if outcome == "lost" else "observation"
         )
         importance = "high" if outcome in ("won", "lost") else "medium"
 
-        # Key by opponent + outcome so each opponent accumulates a running
-        # model from wins and losses separately. Each new hand with the same
-        # opponent+outcome overwrites, keeping the freshest strategic read.
-        upsert_key = f"lesson:{opponent}:{outcome}"
+        # Task-aware upsert key.
+        if task_type == "poker":
+            upsert_key = f"lesson:{opponent or 'unknown'}:{outcome}"
+        else:
+            # BSM and generic: key by instance_id so each scan/instance gets
+            # its own lesson (they accumulate, don't overwrite).
+            upsert_key = f"lesson:{query.instance_id or uuid.uuid4().hex[:8]}"
 
         metadata: dict[str, Any] = {
             "task": "exploitable_poker",
