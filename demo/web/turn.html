@@ -1,0 +1,692 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Turn — how agents work with Mubit</title>
+<link rel="stylesheet" href="../../viz/style.css">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* Page-local layout only. Every colour is a viz/style.css token; no raw hex. */
+
+.lede-line { color: var(--text-2); font-size: 13.5px; line-height: 1.55; margin: 0 0 10px; max-width: 92ch; }
+.lede-line b { color: var(--text-1); font-weight: 600; }
+.contrast { font-size: 12.5px; color: var(--text-2); margin: 0 0 16px; }
+.contrast .n { color: var(--text-1); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Question selector -------------------------------------------------------- */
+.qbar { padding: 13px 16px 12px; margin: 0 0 16px; }
+.qbar-h { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 9px; }
+.qbar-h .rowlbl { margin-top: 0; }
+.qbar-h .mode { font-size: 12px; color: var(--text-2); }
+.qbar-h .sp { margin-left: auto; }
+.qstrip { display: flex; flex-wrap: wrap; align-items: stretch; gap: 4px; }
+.qb {
+  font: inherit; font-size: 11.5px; font-variant-numeric: tabular-nums;
+  min-width: 32px; padding: 5px 6px; text-align: center; cursor: pointer;
+  color: var(--muted); background: var(--plane);
+  border: 1px solid var(--border); border-radius: 6px;
+}
+.qb:hover { color: var(--text-1); border-color: var(--axis); }
+.qb.has { color: var(--text-2); }
+.qb.live { border-style: dashed; border-color: var(--axis); color: var(--text-1); }
+.qb.sel { color: var(--text-1); background: var(--band); border-color: var(--axis); box-shadow: inset 0 0 0 1px var(--axis); }
+.qdiv {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  font-size: 10px; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--st-warning); padding: 0 7px;
+}
+.qdiv::before { content: ""; width: 0; align-self: stretch; border-left: 2px solid var(--st-warning); }
+.qmeta { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+
+.btn {
+  font: inherit; font-size: 11px; padding: 3px 9px; cursor: pointer;
+  color: var(--text-2); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 6px;
+}
+.btn:hover { color: var(--text-1); }
+.btn.on { color: var(--text-1); border-color: var(--axis); background: var(--band); }
+.btn[disabled] { cursor: default; opacity: .55; }
+
+/* Arm columns -------------------------------------------------------------- */
+.arms > .card { margin: 0; min-width: 0; }
+.block.prompt { max-height: 210px; overflow-y: auto; }
+.block.lesson { max-height: 170px; overflow-y: auto; }
+.block.cand-t { max-height: 96px; overflow-y: auto; margin: 0; font-size: 11px; }
+
+/* The injected block is the mechanism, so it gets the only large number. */
+.inj { display: flex; align-items: baseline; gap: 10px; margin-top: 4px; }
+.inj .big { font-size: 28px; font-weight: 600; line-height: 1; color: var(--text-1); font-variant-numeric: tabular-nums; }
+.inj .big.zero { color: var(--muted); }
+.inj .lbl { font-size: 12px; color: var(--text-2); line-height: 1.4; }
+.why { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 7px 0 0; }
+.why b { color: var(--text-2); font-weight: 600; }
+
+.cand { border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; margin: 6px 0; background: var(--surface); }
+.cand-h { display: flex; align-items: baseline; gap: 8px; font-size: 11px; color: var(--muted); margin-bottom: 5px; flex-wrap: wrap; }
+.cand-h .sc { margin-left: auto; color: var(--text-1); font-variant-numeric: tabular-nums; }
+
+.turn-h { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 11px; color: var(--muted); margin-top: 12px; }
+.turn-h b { color: var(--text-1); font-size: 12px; }
+.turn-h .sp { margin-left: auto; }
+.fblbl { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-top: 6px; }
+
+.vrow { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; margin-top: 7px; }
+.kvp { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
+.kvp .k { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.kvp .v { font-size: 12.5px; color: var(--text-1); font-variant-numeric: tabular-nums; word-break: break-word; }
+.kvp .v.good { color: var(--st-good); }
+.kvp .v.bad { color: var(--st-critical); }
+.kvp .v.pend { color: var(--muted); font-style: italic; }
+
+.kv { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.kv .tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+</style>
+</head><body>
+<main class="wrap">
+  <p class="lede-line" id="lede">
+    <b>Both arms are handed the same task prompt by the harness.</b>
+    The only thing that differs is what Mubit puts in front of it — the block below,
+    retrieved from what the ON arm learned on earlier questions. Everything on this page
+    is the wire: the exact recall query, the exact returned candidates, the exact injected
+    text, the exact turns, and the exact lesson written back. The prompt is recorded once per
+    question and shown on both sides, because the harness issues one.
+  </p>
+  <p class="contrast" id="contrast"></p>
+
+  <section class="card qbar">
+    <div class="qbar-h">
+      <span class="rowlbl">Question</span>
+      <span class="mode" id="qmode"></span>
+      <span class="sp"></span>
+      <button type="button" class="btn" id="follow">Follow live</button>
+    </div>
+    <div class="qstrip" id="qstrip"></div>
+    <div class="qmeta" id="qmeta"></div>
+  </section>
+
+  <div class="arms">
+    <section class="card on-arm" id="col-stateful"></section>
+    <section class="card off-arm" id="col-stateless"></section>
+  </div>
+</main>
+<script src="../../viz/chart.js"></script>
+<script src="demo.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var D = window.D;
+  var el = D.el;
+
+  /* ---------------------------------------------------------------- state --
+   * `pinned` is the only page-owned selection state. null means "follow the
+   * live question", which is what an unattended screen should do; a click
+   * pins, because an audience asks about something three questions back and
+   * the screen must stop moving under them. */
+  var pinned = null;
+
+  /* The reducer keeps only the LAST prompt.injected per question+arm, and the
+   * measured system fires that event on EVERY turn: MubitMemorySystem.respond()
+   * calls _inject_memory() unconditionally, but only retrieves lessons at an
+   * instance boundary (`_at_instance_boundary`). So on a four-turn question the
+   * six-lesson injection from turn 1 is overwritten by three empty ones, and
+   * `q[arm].injected` ends up reading `{lesson_count: 0, injected: false}`.
+   * That would erase the entire point of this page, so the page keeps its own
+   * first-injection record off the same event stream. demo.js is not modified;
+   * this only uses its public `on()` hook. */
+  var injFirst = new Map();
+
+  function armOf(ev) {
+    return ev.arm === "stateless" ? "stateless" : ev.arm === "stateful" ? "stateful" : null;
+  }
+
+  /* Mirrors demo.js's resolveIndex(). CL-Bench slices the baseline task to one
+   * instance per process, so every stateless event reports instance_index 0 and
+   * only instance_id tells the questions apart; demo.js resolves position through
+   * an id → index map learned from the stateful arm. Keying the record below on
+   * the raw instance_index would pile the entire control arm onto question 0 —
+   * and it would look plausible. */
+  function resolveIndex(ev, arm) {
+    if (arm === "stateful") return ev.instance_index;
+    if (ev.instance_id != null) {
+      var v = D.state.indexById ? D.state.indexById[String(ev.instance_id)] : undefined;
+      return v === undefined ? null : v;
+    }
+    return ev.instance_index;
+  }
+
+  D.on("prompt.injected", function (ev) {
+    if (ev == null) return;
+    var arm = armOf(ev);
+    if (!arm) return;
+    var index = resolveIndex(ev, arm);
+    if (index == null) return;
+    var p = ev.payload || {};
+    var rec = {
+      lessonCount: p.lesson_count,
+      block: p.block || "",
+      charsAdded: p.chars_added,
+      injected: !!p.injected,
+      turn: ev.turn,
+    };
+    var key = index + ":" + arm;
+    var cur = injFirst.get(key);
+    // Keep the first injection of the instance — the only one that can carry
+    // lessons — but let a later turn win if it ever does inject.
+    if (!cur || (!cur.injected && rec.injected)) injFirst.set(key, rec);
+  });
+
+  /* -------------------------------------------------------------- helpers -- */
+
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+  function add(parent, tag, cls, text) {
+    var n = el(tag, cls, text);
+    parent.appendChild(n);
+    return n;
+  }
+
+  function lbl(root, text) { return add(root, "div", "rowlbl", text); }
+  function empty(root, text) { return add(root, "div", "block empty", text); }
+
+  function int(v) {
+    if (v == null || typeof v !== "number" || !isFinite(v)) return "—";
+    return Number(v).toLocaleString("en-US");
+  }
+
+  function num(v, digits) {
+    if (v == null || typeof v !== "number" || !isFinite(v)) return "—";
+    return Number(v).toFixed(digits == null ? 3 : digits);
+  }
+
+  function plural(n, one, many) { return n === 1 ? one : many; }
+
+  function short(v, limit) {
+    var s = typeof v === "string" ? v : v === null ? "null" : typeof v === "object" ? safeJson(v) : String(v);
+    return s.length > limit ? s.slice(0, limit) + "…" : s;
+  }
+
+  function safeJson(v) {
+    try { return JSON.stringify(v); } catch (err) { return String(v); }
+  }
+
+  function kv(row, k, v, cls) {
+    var w = add(row, "span", "kvp");
+    add(w, "span", "k", k);
+    add(w, "span", "v" + (cls ? " " + cls : ""), v);
+    return w;
+  }
+
+  /* Total questions on the schedule. run.config's shape is owned by the (not
+   * yet written) launcher, so every known spelling is tried and the fallback is
+   * the honest one: as many as we have seen, and never fewer than the two
+   * stages the drift index implies. */
+  function totalQuestions(state) {
+    var c = state.config || {};
+    var direct = [c.total_questions, c.num_questions, c.question_count, c.questions];
+    for (var i = 0; i < direct.length; i++) {
+      if (typeof direct[i] === "number" && direct[i] > 0) return direct[i];
+    }
+    var stages = c.stages || (c.schedule && c.schedule.stages);
+    if (Array.isArray(stages)) {
+      var sum = 0;
+      for (var j = 0; j < stages.length; j++) {
+        var st = stages[j] || {};
+        var n = (st.schedule && st.schedule.num_questions) != null
+          ? st.schedule.num_questions
+          : st.num_questions;
+        if (typeof n === "number") sum += n;
+      }
+      if (sum > 0) return sum;
+    }
+    return Math.max(state.questions.length, state.driftIndex * 2, 1);
+  }
+
+  function liveIndex(state) {
+    var a = state.arms.stateful.current;
+    var b = state.arms.stateless.current;
+    if (a != null) return a;
+    if (b != null) return b;
+    return state.questions.length ? state.questions.length - 1 : 0;
+  }
+
+  function selectedIndex(state) {
+    return pinned != null ? pinned : liveIndex(state);
+  }
+
+  function injectedFor(idx, arm, q) {
+    var local = injFirst.get(idx + ":" + arm);
+    if (local) return local;
+    return q ? q[arm].injected : null;
+  }
+
+  function armTitle(arm) {
+    return arm === "stateful" ? "Memory ON — Mubit" : "Memory OFF — stateless baseline";
+  }
+
+  function armStatus(slot) {
+    if (!slot) return "no data yet";
+    if (slot.done) return "complete";
+    if (slot.started) return "running…";
+    return "not started";
+  }
+
+  /* ------------------------------------------------------------- selector -- */
+
+  function stripSig(state) {
+    var parts = [
+      totalQuestions(state), selectedIndex(state), state.driftIndex,
+      state.arms.stateful.current, state.arms.stateless.current,
+      pinned == null ? "live" : "pin",
+    ];
+    for (var i = 0; i < state.questions.length; i++) {
+      var q = state.questions[i];
+      parts.push((q.stateful.started ? 1 : 0) + "" + (q.stateless.started ? 1 : 0));
+    }
+    return parts.join("|");
+  }
+
+  function paintStrip(state) {
+    var strip = document.getElementById("qstrip");
+    var total = totalQuestions(state);
+    var sel = selectedIndex(state);
+    var drift = state.driftIndex;
+    clear(strip);
+
+    for (var i = 0; i < total; i++) {
+      if (i === drift && drift > 0 && drift < total) {
+        var d = add(strip, "span", "qdiv", "migration");
+        d.title = "questions " + drift + " and later run against the migrated schema";
+      }
+      var q = state.questions[i];
+      var started = !!(q && (q.stateful.started || q.stateless.started));
+      var live = i === state.arms.stateful.current || i === state.arms.stateless.current;
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "qb" + (started ? " has" : "") + (live ? " live" : "") + (i === sel ? " sel" : "");
+      b.textContent = String(i);
+      b.setAttribute("aria-pressed", i === sel ? "true" : "false");
+      b.title = "question " + i + (started ? "" : " — nothing on the wire yet") + (live ? " — in flight" : "");
+      b.addEventListener("click", pinTo(i));
+      strip.appendChild(b);
+    }
+
+    var mode = document.getElementById("qmode");
+    var live2 = liveIndex(state);
+    if (pinned == null) {
+      mode.textContent = state.questions.length
+        ? "following live · question " + live2
+        : "following live · nothing has started yet";
+    } else {
+      mode.textContent = "pinned to question " + pinned + " · live is at question " + live2;
+    }
+
+    var follow = document.getElementById("follow");
+    follow.textContent = pinned == null ? "Following live" : "Follow live";
+    follow.classList.toggle("on", pinned == null);
+    follow.disabled = pinned == null;
+  }
+
+  function pinTo(i) {
+    return function () { pinned = i; D.render(); };
+  }
+
+  function paintMeta(state, q, idx) {
+    var meta = document.getElementById("qmeta");
+    clear(meta);
+    var stage = q && q.stage ? q.stage : idx >= state.driftIndex ? "post" : "pre";
+    add(meta, "span", "tag", stage === "post" ? "post-migration schema" : "pre-migration schema");
+    if (!q) {
+      add(meta, "span", "tag", "not started");
+      return;
+    }
+    if (q.id != null) add(meta, "span", "tag", "id " + short(q.id, 40));
+    if (q.num != null) add(meta, "span", "tag", "question " + q.num + " of the stage");
+    if (q.difficulty) add(meta, "span", "tag", "difficulty " + short(q.difficulty, 24));
+    if (q.budget != null) add(meta, "span", "tag", q.budget + " query budget");
+    if (q.driftNotice) add(meta, "span", "tag warnt", "carries the migration notice");
+  }
+
+  /* ---------------------------------------------------------------- panes -- */
+
+  function paintPrompt(root, q) {
+    lbl(root, "The task prompt (from the harness)");
+    if (q && q.prompt) add(root, "div", "block prompt", q.prompt);
+    else empty(root, "no prompt on the wire for this question yet");
+  }
+
+  function paintInjected(root, state, q, idx, arm) {
+    lbl(root, "What Mubit put in front of it");
+    var inj = injectedFor(idx, arm, q);
+    var slot = q ? q[arm] : null;
+
+    if (!inj) {
+      empty(root, slot && slot.started
+        ? "waiting for the first turn of this question"
+        : "this arm has not started this question");
+      return;
+    }
+
+    var n = typeof inj.lessonCount === "number" ? inj.lessonCount : null;
+    var live = !!(inj.injected && inj.block);
+    var row = add(root, "div", "inj");
+    add(row, "div", "big" + (n ? "" : " zero"), n == null ? "—" : String(n));
+    add(row, "div", "lbl", n == null
+      ? "lesson count not reported on the wire"
+      : n > 0
+        ? plural(n, "lesson injected", "lessons injected") + " · +" + int(inj.charsAdded) + " chars ahead of the prompt"
+        : "lessons injected · the prompt reached the model unchanged");
+
+    if (live) {
+      add(root, "div", "block mem", inj.block);
+      add(root, "p", "why",
+        "This text — header, numbering and 300-character-per-lesson truncation — is exactly what " +
+        "MubitMemorySystem._inject_memory() prepended. It is the whole mechanism: same task, same model, " +
+        "one extra block.");
+      return;
+    }
+
+    if (arm === "stateless") {
+      add(root, "p", "why",
+        "Nothing was injected, and this is the point of the arm. The stateless baseline builds a new " +
+        "system — and therefore a new Mubit run_id — for every question, so its recall runs against an " +
+        "empty run and there is nothing to find. Identical prompt, empty memory: that is the control.");
+    } else {
+      var failed = !!(slot && slot.recall && slot.recall.error);
+      add(root, "p", "why", failed
+        ? "Nothing was injected because the recall below failed, so there were no lessons to inject and " +
+          "_inject_memory() returned the prompt untouched. The run continues memoryless rather than stopping."
+        : idx === 0
+          ? "Nothing was injected: this is the first question, so the store is still empty and recall had " +
+            "nothing to return."
+          : "Recall returned no lessons for this question, so _inject_memory() returned the prompt " +
+            "untouched — on this turn the ON arm is running exactly like the baseline.");
+    }
+  }
+
+  function paintRecall(root, q, arm) {
+    lbl(root, "The recall that produced it");
+    var slot = q ? q[arm] : null;
+    var r = slot ? slot.recall : null;
+    if (!r) {
+      empty(root, slot && slot.started
+        ? "no recall on the wire yet"
+        : "this arm has not started this question");
+      return;
+    }
+
+    var head = add(root, "div", "vrow");
+    if (r.limit != null) kv(head, "limit", String(r.limit));
+    if (r.entryTypes) kv(head, "entry types", Array.isArray(r.entryTypes) ? r.entryTypes.join(", ") : short(r.entryTypes, 40));
+    kv(head, "latency", D.fmtMs(r.latencyMs));
+    kv(head, "candidates", r.evidence == null ? "in flight" : String(r.evidence.length),
+      r.evidence == null ? "pend" : "");
+
+    add(root, "div", "block", r.query == null ? "(no query recorded on the wire)" : r.query);
+
+    var isPrefix = !!(q && q.prompt && r.query && q.prompt.indexOf(r.query) === 0);
+    var qlen = r.query ? r.query.length : 0;
+    add(root, "p", "why", (isPrefix
+      ? qlen >= 300
+        ? "That query is the task prompt above, verbatim, cut at its first 300 characters. "
+        : "That query is the task prompt above, verbatim and whole — it is " + qlen +
+          " characters, under the 300-character cap. "
+      : "") +
+      "_build_retrieval_key() in systems/mubit/system.py branches for poker (opponent name) and for BSM " +
+      "(detected peaks); the database task has no branch, so the key falls through to prompt[:300]. " +
+      "The retrieval quality on this page is the quality of that fallback.");
+
+    if (r.error) {
+      add(root, "div", "block empty", "recall failed: " + short(r.error, 300));
+      return;
+    }
+    if (r.evidence == null) {
+      empty(root, "response has not come back yet");
+      return;
+    }
+    if (!r.evidence.length) {
+      empty(root, arm === "stateless"
+        ? "0 candidates returned — a fresh run_id has nothing in it"
+        : "0 candidates returned for this query");
+      return;
+    }
+    for (var i = 0; i < r.evidence.length; i++) paintCandidate(root, r.evidence[i], i);
+  }
+
+  function paintCandidate(root, e, i) {
+    var c = add(root, "div", "cand");
+    var h = add(c, "div", "cand-h");
+    add(h, "span", null, "#" + (i + 1));
+    if (e.id) add(h, "span", "mono", short(e.id, 12));
+    var md = e.metadata || {};
+    if (md.instance_index != null) add(h, "span", null, "written at question " + md.instance_index);
+    add(h, "span", "sc", typeof e.score === "number" ? "score " + num(e.score, 3) : "no score returned");
+    add(c, "div", "block cand-t", e.text ? e.text : "(candidate carried no text)");
+  }
+
+  function paintTurns(root, q, arm) {
+    var slot = q ? q[arm] : null;
+    var turns = slot ? slot.turns : [];
+    lbl(root, "The turns" + (turns.length ? " · " + turns.length : ""));
+    if (!turns.length) {
+      empty(root, slot && slot.started ? "no model response yet" : "this arm has not started this question");
+      return;
+    }
+    for (var i = 0; i < turns.length; i++) {
+      var t = turns[i];
+      var h = add(root, "div", "turn-h");
+      add(h, "b", null, "Turn " + (i + 1));
+      add(h, "span", null, t.action ? String(t.action) : "action not reported");
+      var sp = add(h, "span", "sp mono", D.fmtMs(t.latencyMs));
+      sp.title = "model latency for this turn";
+      var u = t.usage;
+      if (u && (u.input_tokens != null || u.output_tokens != null)) {
+        add(h, "span", "mono", int(u.input_tokens) + " in / " + int(u.output_tokens) + " out tok");
+      }
+
+      var cls = t.action === "QUERY" ? "block sql" : t.action === "ANSWER" ? "block ans" : "block";
+      add(root, "div", cls, t.content ? String(t.content) : "(the model returned no content)");
+
+      if (t.feedback != null) {
+        add(root, "div", "fblbl", "environment feedback");
+        add(root, "div", "block fb", String(t.feedback) || "(empty)");
+      }
+    }
+  }
+
+  /* Reward, correctness and query count are read from harness-populated fields
+   * and never derived here. They arrive on harness.snapshot, which lands on its
+   * own poll cycle — after the turns, sometimes well after — so an unscored
+   * question says "scoring…" rather than showing a zero it does not have. */
+  function paintVerdict(root, q, arm) {
+    lbl(root, "The verdict (from the harness)");
+    var slot = q ? q[arm] : null;
+    if (!slot) {
+      empty(root, "no data for this arm");
+      return;
+    }
+    if (slot.correct == null && slot.reward == null && slot.numQueries == null) {
+      empty(root, slot.done ? "scoring…" : "scoring… (the question is still running)");
+      return;
+    }
+    var row = add(root, "div", "vrow");
+    if (slot.correct == null) kv(row, "correct", "scoring…", "pend");
+    else kv(row, "correct", slot.correct ? "yes" : "no", slot.correct ? "good" : "bad");
+
+    if (slot.reward == null) kv(row, "reward", "scoring…", "pend");
+    else kv(row, "reward", num(slot.reward, 3));
+
+    if (slot.numQueries == null) kv(row, "queries", "scoring…", "pend");
+    else kv(row, "queries", String(slot.numQueries) + (q && q.budget != null ? " / " + q.budget : " / budget unknown"));
+  }
+
+  function paintWrote(root, q, arm) {
+    lbl(root, "What was written back to Mubit");
+    var slot = q ? q[arm] : null;
+    var w = slot ? slot.wrote : null;
+    if (!w) {
+      empty(root, slot && slot.done
+        ? "no write recorded for this question"
+        : "nothing written yet — the lesson is distilled at instance completion");
+      return;
+    }
+
+    add(root, "div", "block lesson", w.content ? String(w.content) : "(no content on the wire)");
+
+    var row = add(root, "div", "vrow");
+    kv(row, "upsert key", w.upsertKey == null ? "—" : short(w.upsertKey, 80));
+    if (w.intent) kv(row, "intent", short(w.intent, 30));
+    if (w.lessonType) kv(row, "type", short(w.lessonType, 30));
+    if (w.importance) kv(row, "importance", short(w.importance, 30));
+    if (w.scope) kv(row, "scope", short(w.scope, 30));
+    kv(row, "latency", D.fmtMs(w.latencyMs));
+
+    var md = w.metadata || {};
+    var keys = Object.keys(md);
+    var mislabelled = md.task === "exploitable_poker";
+    if (keys.length) {
+      var bag = add(root, "div", "kv");
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        var bad = k === "task" && md[k] === "exploitable_poker";
+        var tag = add(bag, "span", "tag" + (bad ? " warnt" : ""), k + ": " + short(md[k], 60));
+        if (bad) tag.title = "mislabelled — this is a database run";
+      }
+    }
+
+    if (mislabelled) {
+      add(root, "p", "why",
+        "metadata.task is hard-coded to \"exploitable_poker\" in MubitMemorySystem._write_lesson(), on " +
+        "every write, on every task. This is a database run. It is a real mislabel in the system that " +
+        "produced the measured numbers, so the demo shows it rather than cleaning it up in the display.");
+    }
+
+    if (arm === "stateless") {
+      add(root, "p", "why",
+        "The baseline writes too — it is the same code — but into a run_id that is discarded before the " +
+        "next question. The write happens and then no one can ever read it. That, and not a different " +
+        "prompt, is what makes this arm the control.");
+    }
+  }
+
+  function paintArm(root, state, q, idx, arm) {
+    clear(root);
+    var slot = q ? q[arm] : null;
+
+    var h = add(root, "div", "arm-h");
+    add(h, "span", "dot");
+    add(h, "span", "nm", armTitle(arm));
+    add(h, "span", "sub", armStatus(slot));
+
+    /* A blank baseline column usually means its events are parked, not missing:
+     * demo.js holds stateless events until the stateful arm names the question.
+     * Say so, rather than letting the column read as "nothing happened". */
+    var parked = arm === "stateless" ? (D.state.pending || []).length : 0;
+    if (parked && (!slot || !slot.started)) {
+      add(root, "p", "why", parked + " " + plural(parked, "event", "events") +
+        " from this arm " + plural(parked, "is", "are") + " parked run-wide (not necessarily this " +
+        "question): every stateless event reports instance_index 0, so demo.js waits for the memory-ON " +
+        "arm to name the question before placing them. They are held, not dropped.");
+    }
+
+    if (!q) {
+      add(root, "div", "empty-state", parked
+        ? "Question " + idx + " has no placed events on this arm yet."
+        : "Question " + idx + " has not started. Nothing has crossed the wire for this arm yet.");
+      return;
+    }
+
+    paintPrompt(root, q);
+    paintInjected(root, state, q, idx, arm);
+    paintRecall(root, q, arm);
+    paintTurns(root, q, arm);
+    paintVerdict(root, q, arm);
+    paintWrote(root, q, arm);
+  }
+
+  /* ------------------------------------------------------------ contrast -- */
+
+  function paintContrast(state, q, idx) {
+    var node = document.getElementById("contrast");
+    clear(node);
+    var on = injectedFor(idx, "stateful", q);
+    var off = injectedFor(idx, "stateless", q);
+    if (!on && !off) {
+      node.appendChild(document.createTextNode(
+        q ? "Question " + idx + " — nothing has been injected on either arm yet."
+          : "Question " + idx + " has not started, so nothing has been injected on either arm."));
+      return;
+    }
+    node.appendChild(document.createTextNode("Question " + idx + " — memory ON received "));
+    add(node, "span", "n", on && typeof on.lessonCount === "number" ? String(on.lessonCount) : "—");
+    node.appendChild(document.createTextNode(" " + (on && on.lessonCount === 1 ? "lesson" : "lessons")
+      + (on && on.charsAdded ? " (+" + int(on.charsAdded) + " chars)" : "") + ", memory OFF received "));
+    add(node, "span", "n", off && typeof off.lessonCount === "number" ? String(off.lessonCount) : "—");
+    node.appendChild(document.createTextNode(
+      " " + (off && off.lessonCount === 1 ? "lesson" : "lessons") + ". Same prompt, both arms."));
+  }
+
+  /* --------------------------------------------------------------- paint -- */
+
+  function detailSig(state, q, idx) {
+    var parts = [idx, pinned == null ? "live" : "pin", state.driftIndex, state.questions.length,
+      (state.pending || []).length];
+    if (!q) return parts.join("|") + "|none";
+    parts.push(q.id, q.num, q.difficulty, q.budget, q.stage, q.driftNotice ? 1 : 0, (q.prompt || "").length);
+    var arms = ["stateful", "stateless"];
+    for (var a = 0; a < arms.length; a++) {
+      var arm = arms[a];
+      var s = q[arm];
+      parts.push(arm, s.started ? 1 : 0, s.done ? 1 : 0, s.turns.length);
+      var t = s.turns[s.turns.length - 1];
+      parts.push(t ? t.action + ":" + String(t.content || "").length + ":" +
+        (t.feedback == null ? "-" : String(t.feedback).length) + ":" + t.latencyMs : "-");
+      var inj = injectedFor(idx, arm, q);
+      parts.push(inj ? inj.lessonCount + ":" + inj.charsAdded + ":" + (inj.block || "").length +
+        ":" + (inj.injected ? 1 : 0) : "-");
+      var r = s.recall;
+      parts.push(r ? String(r.query || "").length + ":" + (r.evidence ? r.evidence.length : "-") +
+        ":" + r.latencyMs + ":" + (r.error ? 1 : 0) : "-");
+      var w = s.wrote;
+      parts.push(w ? String(w.content || "").length + ":" + w.upsertKey + ":" + w.latencyMs +
+        ":" + Object.keys(w.metadata || {}).length : "-");
+      parts.push(s.reward, s.correct, s.numQueries);
+    }
+    return parts.join("|");
+  }
+
+  var lastStrip = null;
+  var lastDetail = null;
+
+  function paint(state) {
+    var idx = selectedIndex(state);
+    var q = state.questions[idx] || null;
+
+    var ss = stripSig(state);
+    if (ss !== lastStrip) {
+      lastStrip = ss;
+      paintStrip(state);
+    }
+
+    var ds = detailSig(state, q, idx);
+    if (ds === lastDetail) return;
+    lastDetail = ds;
+
+    paintMeta(state, q, idx);
+    paintContrast(state, q, idx);
+    paintArm(document.getElementById("col-stateful"), state, q, idx, "stateful");
+    paintArm(document.getElementById("col-stateless"), state, q, idx, "stateless");
+  }
+
+  document.getElementById("follow").addEventListener("click", function () {
+    pinned = null;
+    D.render();
+  });
+
+  D.mountChrome("Turn", "one question, both arms, end to end — the injected block is the mechanism");
+  D.onRender(paint);
+  D.connect();
+  // The stream may never open (collector down, or a run not started yet). Paint
+  // once regardless so the page shows its honest empty state instead of nothing.
+  D.render();
+})();
+</script>
+</body></html>

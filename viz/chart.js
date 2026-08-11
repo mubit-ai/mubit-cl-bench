@@ -286,7 +286,11 @@
     });
     hit.addEventListener("mouseleave", () => { cross.style.visibility = "hidden"; tp.hide(); });
 
-    legend(card, cfg.series);
+    /* Default: name the series. `cfg.legend` overrides — same escape hatch
+     * `bars` and `grid` already have — for charts whose visual vocabulary is
+     * wider than their series list (a band that means something distinct from
+     * the line drawn through it, say). */
+    legend(card, cfg.legend || cfg.series);
     note(card, cfg.note);
     if (cfg.table !== false) {
       const xsAll = [...new Set(cfg.series.flatMap((d) => d.values.map((p) => p[0])))].sort((a, b) => a - b);
