@@ -33,7 +33,7 @@
       },
       {
         "task": "Exploitable Poker",
-        "Mubit": 3.9,
+        "Mubit": 10.8,
         "ICL": 20.1,
         "Mem0": 20.2,
         "ACE": 8.6
@@ -523,11 +523,14 @@
       "key_advantage": "Mubit's semantic lessons survive schema renames; Mem0's extracted facts break"
     },
     "poker": {
-      "mubit_gain": 3.9,
+      "mubit_gain": 10.8,
       "v5_gain": -8.9,
       "v10_gain": 3.9,
-      "improvement": "From -8.9% to +3.9% by switching from raw observations to minimal opponent observations",
-      "verdict": "Positive gain achieved \u2014 opponent observations help without constraining play"
+      "v11_gain": 10.8,
+      "score_mean": 0.404,
+      "positive_hands": "47/120",
+      "approach": "Session-stateful continuity + Mubit opponent observations",
+      "verdict": "Session calibration + opponent intelligence = +10.8% gain"
     }
   },
   "chart_7_mubit_vs_mem0_drift": {

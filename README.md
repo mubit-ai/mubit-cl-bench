@@ -94,17 +94,18 @@ Measured empirically: **97.3% token reduction** on BSM (5.5M tokens saved), **92
 
 ## Honest Limitations
 
-### Exploitable Poker: +3.9% gain
+### Exploitable Poker: +10.8% gain
 
-Poker is the hardest task for memory — cards are dealt randomly each hand, so there's less persistent signal to learn than in BSM or Database. After iterating through three lesson-distillation strategies:
+Poker is the hardest task for memory — cards are dealt randomly each hand. After iterating through four approaches:
 
 | Version | Approach | Gain |
 |---|---|---|
 | V5 | Raw observations ("Tom called with 27o") | −8.9% |
 | V6 | Strategy directives ("fold trash, tighten up") | −5.9% |
-| **V10** | **Minimal opponent observations (inform, don't constrain)** | **+3.9%** |
+| V10 | Minimal opponent observations (inform, don't constrain) | +3.9% |
+| **V11** | **Session-stateful + Mubit opponent observations** | **+10.8%** |
 
-The breakthrough: don't tell the model HOW to play — it already knows poker. Just provide what it can't see: the opponent's behavior patterns ("went to showdown with weak hand", "tends to fold to aggression"). The model uses this information naturally without overcorrecting its play. Memory should **inform**, not **constrain**.
+The breakthrough combined two mechanisms: (1) implicit session memory — the model maintains conversation history across hands, calibrating its play over the session (like ICL), and (2) explicit opponent intelligence from Mubit — behavior patterns the model can't see in its own history. 47/120 hands positive, only 18 negative.
 
 ---
 
