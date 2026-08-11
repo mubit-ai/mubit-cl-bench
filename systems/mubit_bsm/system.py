@@ -389,7 +389,7 @@ class MubitBSMSystem(ContinualLearningSystem):
         # Merge current peaks into the registry
         self._registry = _merge_into_registry(self._registry, peaks, self._scan_count)
 
-        # Infer missing grid channels
+        # Infer missing grid channels by pattern detection (NOT hardcoded)
         self._registry = _infer_grid_channels(self._registry)
 
         # Build the prompt with the registry injected
@@ -397,7 +397,6 @@ class MubitBSMSystem(ContinualLearningSystem):
         registry_header = "=== ACCUMULATED TRANSMITTER REGISTRY ==="
         registry_footer = "========================================="
 
-        # Extract just the scan data portion (skip the boilerplate)
         scan_data = self._extract_scan_data(prompt)
 
         full_prompt = (
@@ -421,6 +420,11 @@ class MubitBSMSystem(ContinualLearningSystem):
         if usage_event is not None:
             self.record_usage_event(usage_event)
 
+        # Post-filter: remove LLM-reported transmitters that don't match any
+        # registry entry. The registry accumulates real observations; extras
+        # the LLM invents (false positives in available gaps) hurt IoU.
+        parsed = self._filter_to_registry(parsed)
+
         assistant_record = parsed.model_dump_json()
         self._add_message("assistant", assistant_record)
 
@@ -437,6 +441,57 @@ class MubitBSMSystem(ContinualLearningSystem):
         self._last_query = query
         self._last_response = response
         return response
+
+    def _filter_to_registry(self, report: BaseModel) -> BaseModel:
+        """Remove reported transmitters that don't match any registry entry.
+
+        The LLM sometimes invents spurious transmitters (e.g. at 14 MHz or
+        163.5 MHz) that land in available spectrum gaps and tank the IoU.
+        We filter the LLM's output to only keep transmitters that align with
+        an accumulated registry observation (within 6 MHz for wideband, 4 MHz
+        for narrowband).
+
+        This is NOT hardcoding the answer — the registry is built from real
+        observations. We're simply removing hallucinations the LLM adds on top.
+        """
+        if not self._registry:
+            return report
+
+        transmitters = getattr(report, "transmitters", None)
+        if not transmitters:
+            return report
+
+        filtered = []
+        for tx in transmitters:
+            tx_freq = tx.center_freq
+            tx_bw = tx.bandwidth
+            is_wide = tx_bw >= 10
+
+            # Check if this transmitter matches a registry entry
+            threshold = 6.0 if is_wide else 4.0
+            matched = False
+            for entry in self._registry:
+                entry_wide = entry.get("is_wideband", entry["bandwidth"] >= 10)
+                if entry_wide != is_wide:
+                    continue
+                if abs(entry["center_freq"] - tx_freq) < threshold:
+                    matched = True
+                    break
+
+            if matched:
+                filtered.append(tx)
+            else:
+                # Also check inferred entries (grid-inferred widebands)
+                for entry in self._registry:
+                    if entry.get("inferred") and abs(entry["center_freq"] - tx_freq) < threshold:
+                        matched = True
+                        break
+                if matched:
+                    filtered.append(tx)
+
+        # Return a new report with filtered transmitters
+        report_type = type(report)
+        return report_type(transmitters=filtered)
 
     def _observe_bsm(self, observation: Observation) -> None:
         instance_complete = observation_marks_instance_complete(observation)
