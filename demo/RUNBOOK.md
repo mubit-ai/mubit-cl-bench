@@ -119,7 +119,7 @@ Ctrl-C in the terminal does the same thing and shuts Mubit down cleanly.
 | Screen | What it answers | Worth showing |
 |---|---|---|
 | `race.html` | Does memory help? Question by question, against the published result and the range a run this short produces by chance. | The gain curve crossing the migration. |
-| `turn.html` | One question on both arms, turn by turn on the same row — the injected block, every query, the answer submitted and the answer expected. | **Question 10**, the first after the migration, with three retrieved lessons above the prompt. |
+| `turn.html` | One question on both arms, turn by turn on the same row — the injected block, every query, the answer submitted and the answer expected. Under the prompt, exactly how the two arms' copies of it differ. | **Chip 10**, the first question after the migration (it labels itself *question 11 of 20*). The memory arm's prompt opens with the `NOTICE:` paragraph and the baseline's does not — the delta strip flags it in amber. |
 | `ledger.html` | Every `recall()` and every `remember()`, unedited, in order, with payloads and latencies. | A recall returning six candidates with their scores. |
 | `store.html` | What has accumulated, how often each entry is retrieved, and which entries describe a schema that no longer exists. | The step chart climbing past the migration line. |
 
@@ -231,9 +231,29 @@ pkill -f clbench
 **The embedding service is not answering.** Preflight fails on
 `127.0.0.1:8080`. Start it and re-run — nothing has been spent at that point.
 
+**Someone asks why the baseline's recall key says `Question 1/1`.** Because that
+is genuinely the prompt it received. CL-Bench runs each baseline instance
+against a task sliced to that one instance, so the slice holds one question and
+numbers it 1 of 1 — on every question, all run long. The retrieval key is
+`prompt[:300]`, so the header comes along with it. It costs the control nothing
+(it recalls against a fresh `run_id` with nothing in it), but it is an
+uncontrolled difference between the arms and it is in the upstream write-up.
+
+**A wall of `ConnectionResetError` tracebacks in the terminal.** Fixed — the
+collector now swallows the disconnect family, which is what a closed SSE stream
+or one of Chrome's speculative connections looks like. If you still see them,
+your checkout predates that change; `git pull`. Any *other* traceback is real
+and still prints.
+
 ---
 
-Full detail — architecture, the two traps the code exists to avoid, and what the
-first run actually produced — is in [README.md](README.md). The demo runs
+Full detail — architecture, the three traps the code exists to avoid, and what
+the first run actually produced — is in [README.md](README.md). The demo runs
 `systems/mubit` unchanged; `mubit_demo` adds a pass-through wire tap and nothing
 else, which is the only reason its gain is comparable to the published one.
+
+The CL-Bench defects found while building this — the broken post-migration
+control, the `1/1` counter, and baseline instances all reporting
+`instance_index: 0` — are written up with a runnable repro and a proposed patch
+in [UPSTREAM_ISSUE_baseline_slicing.md](../UPSTREAM_ISSUE_baseline_slicing.md).
+Not filed yet.
