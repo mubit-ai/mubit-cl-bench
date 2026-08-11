@@ -8,12 +8,10 @@
 
   <section class="act">
     <h2>What is in memory</h2>
-    <p class="lede">This is the <b>stateful arm's</b> store and only that. Every entry below was written
-      by the memory-ON arm into a Mubit <code>run_id</code> that persists across questions, which is why it
-      accumulates. The stateless control calls <code>remember()</code> just as often — but it is handed a fresh
-      <code>run_id</code> that is discarded before the next question, so nothing it writes is ever recalled.
-      That discarding is precisely what makes it a control, so the control having no visible store is the
-      design and not a fault. <span id="runid" class="mono"></span></p>
+    <p class="lede">The <b>stateful arm's</b> store, and only that. It accumulates because the memory-ON
+      arm writes into one Mubit <code>run_id</code> that persists across questions. The control calls
+      <code>remember()</code> just as often, into a fresh <code>run_id</code> discarded before the next
+      question — so it has no store, by design. <span id="runid" class="mono"></span></p>
     <div class="flag warn" id="caveat"></div>
     <div class="tiles" id="tiles"></div>
   </section>
@@ -31,11 +29,9 @@
 
   <section class="act">
     <h2>Entries</h2>
-    <p class="lede">Newest first. Each entry is what the stateful arm actually handed Mubit, verbatim off the
-      wire: the distilled lesson text, the upsert key and the metadata dict. The metadata is shown as written,
-      including the <code>mubit</code> system's known wart — <code>task</code> is hard-coded to
-      <code>exploitable_poker</code> on every write, whatever task is really running. Correcting it here would
-      be showing you something other than what was stored.</p>
+    <p class="lede">Newest first, verbatim off the wire: the distilled lesson text, the upsert key and the
+      metadata dict as written — including the known wart, <code>task</code> hard-coded to
+      <code>exploitable_poker</code> whatever task is running.</p>
     <div class="feed" id="feed"></div>
   </section>
 
@@ -191,11 +187,10 @@
     var c = byId("caveat");
     c.textContent = "";
 
-    var txt = "An entry cannot know its own Mubit id at write time: mubit calls remember(wait=False), so the " +
-      "ack is a job id for a queued write, not an entry id. The join that does hold is the lesson text — what " +
-      "was written comes back as evidence unchanged — so a recall result is matched to a write on its text, and " +
-      "the real entry id is adopted the first time that lesson comes back. That is why an entry shows an id " +
-      "only once it has been retrieved, and why a zero below means never retrieved rather than never counted.";
+    var txt = "An entry cannot know its own Mubit id at write time — mubit calls remember(wait=False), so the " +
+      "ack is a job id, not an entry id. The join that does hold is the lesson text, which comes back " +
+      "unchanged as evidence, so a write is matched to a recall on its text and adopts the real id the first " +
+      "time it returns. Hence: an id appears only after a retrieval, and a zero means never retrieved.";
     c.appendChild(D.el("b", null, "Retrievals are attributed by lesson text. "));
     c.appendChild(document.createTextNode(txt));
 

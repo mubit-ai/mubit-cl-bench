@@ -132,6 +132,31 @@ def _rewards(artifact: Path) -> tuple[list[list[float]], list[float]]:
     return runs, baseline
 
 
+def _correct_counts(artifact: Path) -> dict[str, Any]:
+    """How often each arm actually answered correctly in the committed runs.
+
+    Context for the race grid, which is mostly red on both arms and reads like
+    a broken display until you know the task: every question is
+    ``difficulty: hard`` and a wrong answer scores 0 no matter how efficiently
+    it was reached. Read off the artifact rather than typed in, for the same
+    reason the gains are.
+    """
+    with gzip.open(artifact) as f:
+        d = json.load(f)
+    per_run = []
+    for rt in d["run_traces"]:
+        metrics = (rt["trace"].get("result") or {}).get("metrics") or {}
+        hist = metrics.get("question_history") or []
+        per_run.append(sum(1 for q in hist if q.get("correct")))
+    outs = d["summary"]["baseline"]["instance_outcomes"]
+    return {
+        "questions": len(outs),
+        "runs": len(per_run),
+        "stateful_mean": round(sum(per_run) / len(per_run), 1) if per_run else None,
+        "stateless": sum(1 for o in outs if o.get("success")),
+    }
+
+
 def _gain(sf: list[float], sl: list[float]) -> float:
     a = sum(sf) / len(sf)
     b = sum(sl) / len(sl)
@@ -160,6 +185,7 @@ def build_reference() -> dict[str, Any]:
         out["published_gain"] = round(sum(_gain(r, baseline) for r in runs) / len(runs), 5)
         out["published_runs"] = len(runs)
         out["published_questions"] = len(baseline)
+        out["published_correct"] = _correct_counts(mubit)
 
         rng = random.Random(7)
         samples = []

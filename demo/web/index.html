@@ -28,10 +28,10 @@
   const tiled = params.get("tile") === "1";
 
   const PAGES = [
-    ["race.html", "The race", "Memory on versus memory off, question by question, against the published result and the range a run this short is expected to produce. The verdict screen."],
-    ["turn.html", "Turn theatre", "One question end to end on both arms: the task prompt, the block Mubit injected in front of it, every SQL query, the rows that came back, the answer, the verdict."],
-    ["ledger.html", "Mubit I/O", "Every recall() Mubit was asked and every remember() it was given, unedited, in order, with payloads and latencies. The wire."],
-    ["store.html", "Store", "What has accumulated: each lesson, when it was written, how often it has been retrieved since, and which entries describe a schema that no longer exists."],
+    ["race.html", "The race", "Memory on versus memory off, question by question. The verdict screen."],
+    ["turn.html", "Turn theatre", "One question on both arms, turn by turn, side by side."],
+    ["ledger.html", "Mubit I/O", "Every recall() and every remember(), unedited, in order."],
+    ["store.html", "Store", "What has accumulated, and how much of it is ever retrieved."],
   ];
 
   /* Tiled mode does NOT open its own stream. Browsers cap concurrent
@@ -70,10 +70,9 @@
     root.appendChild(
       Object.assign(D.el("p", "sub"), {
         textContent:
-          "Four views of one benchmark run, all reading the same event stream. " +
-          "The run is the real CL-Bench harness on database_exploration: 10 questions on the " +
-          "original schema, a live schema migration, then 10 questions on the new one — with the " +
-          "stateless baseline running alongside as the control.",
+          "Four views of one run of the real CL-Bench harness on database_exploration: " +
+          "10 questions, a live schema migration, then 10 more — with the stateless baseline " +
+          "running alongside as the control. All four read the same event stream.",
       })
     );
 
@@ -108,10 +107,10 @@
     flag.appendChild(
       Object.assign(D.el("span"), {
         textContent:
-          "This runs the measured system unchanged. mubit_demo is systems/mubit with a pass-through " +
-          "wire tap and no behavioural difference — the retrieval key, the lesson text and the metadata " +
-          "are the ones that produced the committed artifacts, including their known warts. Every score " +
-          "on every screen comes from the harness's own live trace files; nothing here recomputes a reward.",
+          "mubit_demo is systems/mubit with a pass-through wire tap and no behavioural difference — " +
+          "the same retrieval key, lesson text and metadata that produced the committed artifacts, " +
+          "warts included. Every score comes from the harness's own trace files; nothing here " +
+          "recomputes a reward.",
       })
     );
     root.appendChild(flag);

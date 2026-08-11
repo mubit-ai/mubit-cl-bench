@@ -53,16 +53,13 @@
 
   <div class="flag warn" id="warts">
     <b>Shown as measured, warts included.</b>
-    Each row below is the literal call recorded by the wire tap in
-    <code>systems/mubit_demo/system.py</code> — the arguments that went in and the value that came back,
-    not a reconstruction of them. The database path through <code>systems/mubit/system.py</code> is
-    untuned, and three of its rough edges are on screen on purpose: the recall query is the raw question
-    prompt cut to 300 characters (<code>_build_retrieval_key</code> has no database branch, so it falls
-    through to <code>prompt[:300]</code>); every lesson is written with
-    <code>metadata.task = "exploitable_poker"</code>; and the lesson text comes from the generic
-    distiller, <code>"Prior instance feedback: {feedback[:200]}. My action: {action[:200]}"</code>.
-    These are real properties of the system being measured, not demo bugs — the demo runs the same code
-    path that produced the committed numbers, which is the only reason its gain is comparable to them.
+    Every row is the literal call recorded by the wire tap in <code>systems/mubit_demo/system.py</code>:
+    what went in, what came back. The database path through <code>systems/mubit</code> is untuned, and
+    three rough edges are on screen on purpose — the recall query is the prompt cut to 300 characters
+    (<code>_build_retrieval_key</code> has no database branch), every lesson is written with
+    <code>metadata.task = "exploitable_poker"</code>, and the lesson text comes from the generic
+    distiller. These are properties of the measured system, not demo bugs: it is the same code path
+    that produced the committed numbers.
     <span class="wartline" id="wartcount"></span>
   </div>
 

@@ -62,7 +62,7 @@ unaffected.
 | | |
 |---|---|
 | **Race** | Memory on versus memory off, question by question, against the published result and the range a run this short is expected to produce. The verdict screen. |
-| **Turn theatre** | One question end to end on both arms: the task prompt, the block Mubit injected in front of it, every SQL query, the rows that came back, the answer, the verdict. |
+| **Turn theatre** | One question end to end on both arms, laid out so turn *n* of memory ON sits on the same row as turn *n* of memory OFF: the injected block, every SQL query, the rows that came back, the answer submitted, the answer expected. |
 | **Mubit I/O** | Every `recall()` and every `remember()`, unedited, in order, with payloads, scores and latencies. |
 | **Store** | What has accumulated: each lesson, when it was written, how often it has been retrieved since, and which entries describe a schema that no longer exists. |
 
@@ -209,9 +209,16 @@ by inexplicable failures. `run_demo.py` picks a free gRPC port and probes the
 HTTP API after a settle delay, so this should not recur — but if you start Mubit
 by hand, pass `--grpc-port`.
 
-**Everything scores 0.** Normal for a 2-question smoke; the questions are drawn
-`difficulty: hard` and reward is graded on query efficiency, so a wrong answer
-scores exactly zero regardless of effort.
+**Most cells are red, and the turn screen says `correct: no` almost everywhere.**
+That is the task, not a broken display. Every question in the pool is
+`difficulty: hard`, and grading is all-or-nothing — integers must match exactly,
+floats within 1%, text exactly (`task.py:_evaluate_answer`). Reward is
+`(15 − queries) / 15` when correct and `0` when not, so a near miss scores the
+same as no answer at all. For scale, the committed 3-run result on this same
+system averages **12.7 of 40** correct with memory and **6 of 40** without; on
+the 20 questions this demo uses, the published baseline got **1**. The verdict
+row on the turn screen prints the submitted answer beside the expected one, so a
+red cell can be checked rather than taken on faith.
 
 **Pages blank in tiled mode.** Browsers cap connections per origin at six on
 HTTP/1.1. The index drops its own stream when tiling for this reason; opening
