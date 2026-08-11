@@ -38,7 +38,18 @@
 }
 .home:hover { color: var(--text-1); }
 
-.chrome-nav { display: flex; gap: 4px; }
+.chrome-nav { display: flex; gap: 4px; align-items: center; }
+/* The analysis pages are a second group, not five more demo screens: a rule
+ * and a label separate them, and they stay recessive so the live screens keep
+ * the eye. The label is the first thing to go when the bar gets tight. */
+.chrome-nav .nav-sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 7px; }
+.chrome-nav .nav-lbl {
+  font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--muted); white-space: nowrap; padding-right: 2px;
+}
+.chrome-nav a.alt { color: var(--muted); }
+.chrome-nav a.alt:hover { color: var(--text-1); background: var(--band); }
+@media (max-width: 1180px) { .chrome-nav .nav-lbl { display: none; } }
 .chrome-nav a {
   text-decoration: none; color: var(--text-2); font-size: 13px;
   padding: 4px 10px; border-radius: 6px; border: 1px solid transparent;

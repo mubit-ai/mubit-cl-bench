@@ -704,6 +704,17 @@
     ["store.html", "Store"],
   ];
 
+  /* The committed analysis pages — the full 3-run results and their charts.
+   * They live outside the demo, so they take no replay parameters (they would
+   * not know what to do with them) and open in a new tab: clicking one mid-run
+   * must not navigate a live stream away, and inside the tiled view it would
+   * otherwise replace a single frame. Paths are relative to demo/web/. */
+  const ANALYSIS = [
+    ["../../viz/bsm.html", "Spectrum", "Blind spectrum monitoring — full runs and charts"],
+    ["../../viz/db.html", "Database", "Database exploration — full runs and charts"],
+    ["../../viz/poker.html", "Poker", "Exploitable poker — full runs and charts"],
+  ];
+
   function mountChrome(title, subtitle) {
     const bar = document.createElement("header");
     bar.className = "chrome";
@@ -717,6 +728,12 @@
           `<a href="${href}${params}"${
             location.pathname.endsWith(href) ? ' class="on"' : ""
           }>${label}</a>`
+      ).join("") +
+      `<span class="nav-sep" aria-hidden="true"></span>` +
+      `<span class="nav-lbl">full runs</span>` +
+      ANALYSIS.map(
+        ([href, label, title]) =>
+          `<a class="alt" href="${href}" target="_blank" rel="noopener" title="${title}">${label}</a>`
       ).join("") +
       `</nav>` +
       `<div class="chrome-r"><span id="clock" class="mono"></span><span id="conn" class="pill">connecting…</span>` +
