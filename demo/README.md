@@ -17,6 +17,10 @@ python demo/run_demo.py --replay LATEST  # replay a recording, no API spend
 
 Then open the URL it prints: `http://127.0.0.1:8799/demo/web/index.html`.
 
+**[RUNBOOK.md](RUNBOOK.md) is the copy-paste guide** — every command in order,
+the flag table, the deep links and the troubleshooting entries. This file is the
+why: what runs, where the numbers come from, and what the code is avoiding.
+
 ---
 
 ## What actually runs
