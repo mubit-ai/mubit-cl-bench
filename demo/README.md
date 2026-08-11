@@ -129,7 +129,7 @@ Event shape:
 `remember.request` · `remember.response` · `instance.end` ·
 `harness.snapshot` · `harness.manifest` · `run.finished`
 
-### Two traps this code exists to avoid
+### Three traps this code exists to avoid
 
 **The stateless arm cannot number its own questions.** CL-Bench runs each
 baseline instance against a task *sliced to that one instance*, so the sliced
@@ -141,6 +141,21 @@ plausible. `demo.js` resolves position through an `instance_id → index` map
 learned from the stateful arm, parks stateless events that arrive before their
 mapping is known, and raises a banner on all four pages if position and mapping
 ever disagree.
+
+**The arms are not handed the same prompt.** Same slicing, second consequence:
+the baseline's copy is headed `Question 1/1` on every question where the
+stateful copy is headed `Question n/20`, and at the migration the stateful copy
+carries a 168-character `NOTICE:` paragraph the baseline's does not — the schema
+change is announced only to the arm with prior assumptions to revise. The turn
+screen therefore holds the prompt **per arm** and prints the delta under it,
+computed from the two texts on the wire rather than described from memory. It
+previously held one prompt per question, first writer wins, and called it
+"identical on both arms". That was wrong everywhere and materially wrong at
+question 11: `stage.change` fires immediately before the stateful
+`instance.start`, so it teaches the `instance_id → index` map one event early and
+lets a parked stateless `instance.start` drain first — stamping the question with
+`num: 1` and the copy that has no migration notice, directly beneath a chip
+reading *carries the migration notice*.
 
 **The system is told nothing about which arm it is in.** `phase` reaches the
 trace recorder but never the system, and both arms are constructed with

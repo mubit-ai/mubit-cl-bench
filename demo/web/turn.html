@@ -89,6 +89,23 @@
 .cell-h .sp { margin-left: auto; }
 
 .block.prompt { max-height: 190px; overflow-y: auto; }
+
+/* The per-arm prompt difference. It sits inside the prompt card rather than in
+ * a footnote because at the migration it is the most consequential fact on the
+ * screen — one arm was told the schema moved and the other was not. */
+.delta { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 9px; }
+.delta-h { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.delta-r { display: flex; gap: 10px; align-items: flex-start; margin-top: 7px; }
+.delta-r .who { font-size: 10px; letter-spacing: .06em; font-weight: 600; flex: none; width: 26px; padding-top: 2px; }
+.delta-r.on .who { color: var(--sys-mubit); }
+.delta-r.off .who { color: var(--sys-baseline); }
+.delta-r .txt {
+  min-width: 0; max-height: 130px; overflow-y: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
+  line-height: 1.5; white-space: pre-wrap; word-break: break-word; color: var(--text-1);
+}
+.delta-r .txt.gone { font-family: inherit; font-style: italic; color: var(--muted); }
+.why.warn { color: var(--st-warning); }
 .block.lesson { max-height: 160px; overflow-y: auto; }
 .block.cand-t { max-height: 90px; overflow-y: auto; margin: 0; font-size: 11px; }
 
@@ -122,9 +139,10 @@
 </head><body>
 <main class="wrap">
   <p class="lede-line" id="lede">
-    <b>Same question, same model, same query budget on both arms.</b> The only difference is the block
-    Mubit puts in front of the prompt. Everything below is the wire, unedited: the recall query, the
-    candidates it returned, the injected text, every turn, and the lesson written back.
+    <b>Same question, same model, same query budget on both arms.</b> What Mubit puts in front of the
+    prompt is the difference under test; the harness adds one of its own, shown under the prompt.
+    Everything below is the wire, unedited: the recall query, the candidates it returned, the injected
+    text, every turn, and the lesson written back.
   </p>
   <p class="contrast" id="contrast"></p>
 
@@ -404,26 +422,78 @@
       return;
     }
     if (q.id != null) add(meta, "span", "tag", "id " + short(q.id, 40));
-    if (q.num != null) add(meta, "span", "tag", "question " + q.num + " of the stage");
+    /* question_num is `_current_question_idx + 1` — the 1-based position in
+     * the whole run, not within the stage, which is what the old label said.
+     * It is read off the stateful arm only; the sliced baseline reports 1. */
+    if (q.num != null) add(meta, "span", "tag", "question " + q.num + " of " + totalQuestions(state));
     if (q.difficulty) add(meta, "span", "tag", "difficulty " + short(q.difficulty, 24));
     if (q.budget != null) add(meta, "span", "tag", q.budget + " query budget");
     if (q.driftNotice) add(meta, "span", "tag warnt", "carries the migration notice");
   }
 
-  /* ------------------------------------------------------- shared prompt -- */
+  /* -------------------------------------------------------- task prompt -- */
 
-  /* The harness issues ONE prompt per question and hands the same text to both
-   * arms, so it is shown once, full width, above the grid — repeating it in
-   * both columns would waste the width and invite the reader to diff two
-   * identical blocks. */
+  /* The two arms are NOT handed the same text, so this card shows the memory
+   * arm's copy full width and then states the delta — it used to claim the
+   * prompt was "identical on both arms", which is false on every question and
+   * materially false at the migration.
+   *
+   * The delta is computed from the two prompts on the wire rather than
+   * described from memory: trim the longest common suffix and report whatever
+   * head is left on each side. On this task that resolves to the counter line
+   * ("Question 11/20" against "Question 1/1", because CL-Bench slices the
+   * baseline task to a single instance) and, at the migration, to the NOTICE
+   * paragraph that reaches the memory arm and not the control. If the harness
+   * ever changes what it varies, this reports the new difference instead of
+   * repeating a stale sentence. */
+  function promptDelta(q) {
+    var a = q && q.stateful ? q.stateful.prompt : null;
+    var b = q && q.stateless ? q.stateless.prompt : null;
+    if (!a || !b) return null;
+    if (a === b) return { same: true };
+    var i = 0;
+    while (i < a.length && i < b.length &&
+           a.charCodeAt(a.length - 1 - i) === b.charCodeAt(b.length - 1 - i)) i++;
+    return { same: false, on: a.slice(0, a.length - i), off: b.slice(0, b.length - i) };
+  }
+
+  function deltaRow(host, arm, text) {
+    var r = add(host, "div", "delta-r " + (arm === "stateful" ? "on" : "off"));
+    add(r, "span", "who", arm === "stateful" ? "ON" : "OFF");
+    if (text) add(r, "div", "txt", text);
+    else add(r, "div", "txt gone", "nothing — this arm's copy starts straight at the question");
+    return r;
+  }
+
   function paintPromptCard(q, idx) {
     var card = document.getElementById("promptcard");
     clear(card);
+    var d = promptDelta(q);
     var h = add(card, "div", "cell-h");
     add(h, "b", null, "The task prompt");
-    add(h, "span", null, "issued once by the harness · identical on both arms");
-    if (q && q.prompt) add(card, "div", "block prompt", q.prompt);
-    else empty(card, "no prompt on the wire for question " + idx + " yet");
+    add(h, "span", null, !d ? "as issued to the memory arm"
+      : d.same ? "byte-identical on both arms"
+      : "the arms did not receive the same text");
+    if (!q || !q.prompt) { empty(card, "no prompt on the wire for question " + idx + " yet"); return; }
+    add(card, "div", "block prompt", q.prompt);
+    if (!d || d.same) return;
+
+    var box = add(card, "div", "delta");
+    add(box, "div", "delta-h", "where the baseline's copy differs — everything below this differs by nothing");
+    deltaRow(box, "stateful", d.on);
+    deltaRow(box, "stateless", d.off);
+
+    /* Two distinct causes, and only the second is worth stopping on, so they
+     * are named separately and the notice case is flagged. */
+    var missedNotice = d.on.indexOf("NOTICE:") === 0 && d.off.indexOf("NOTICE:") !== 0;
+    add(box, "p", "why" + (missedNotice ? " warn" : ""),
+      "The counter differs on every question: CL-Bench runs each baseline instance against a task " +
+      "sliced to that one instance, so the control's copy is headed Question 1/1 throughout." +
+      (missedNotice
+        ? " The migration notice is the difference that matters — it reached the memory arm and not " +
+          "the control, which is the schema change being announced to the only arm with prior " +
+          "assumptions to revise."
+        : " The rest of the text is byte-identical."));
   }
 
   /* ---------------------------------------------------------------- cells -- */
@@ -529,11 +599,31 @@
 
     add(c, "div", "block", r.query == null ? "(no query recorded on the wire)" : r.query);
 
-    var isPrefix = !!(q && q.prompt && r.query && q.prompt.indexOf(r.query) === 0);
+    /* Compare against THIS arm's prompt, not the card above. The card shows
+     * the memory arm's copy, and the control's copy diverges by the ninth
+     * character — so checking the key against it reported "not a prefix" for
+     * the baseline on every question, when in fact the key is exactly that
+     * arm's own prompt[:300]. */
+    var own = slot ? slot.prompt : null;
+    var isPrefix = !!(own && r.query && own.indexOf(r.query) === 0);
     var qlen = r.query ? r.query.length : 0;
-    add(c, "p", "why", (isPrefix
-      ? qlen >= 300 ? "The prompt above, cut at 300 characters. " : "The prompt above, whole (" + qlen + " chars). "
-      : "") + "_build_retrieval_key() has no database branch, so the key falls through to prompt[:300].");
+    var why = (isPrefix
+      ? qlen >= 300 ? "This arm's prompt, cut at 300 characters. "
+        : "This arm's prompt, whole (" + qlen + " chars). "
+      : "") + "_build_retrieval_key() has no database branch, so the key falls through to prompt[:300].";
+
+    /* The "1/1" is the single most-asked question on this screen. Say why it
+     * is there — and say it only when the key really does start that way, so
+     * the sentence cannot outlive the behaviour it describes. */
+    var solo = r.query ? /^Question\s+1\/1\b/.test(r.query) : false;
+    if (arm === "stateless" && solo) {
+      why += " It reads Question 1/1 rather than " + (q && q.num != null ? "Question " + q.num : "the run position") +
+        " because CL-Bench runs each baseline instance against a task sliced to that one instance: " +
+        "the slice genuinely holds one question, and numbers it 1 of 1. Every stateless key on every " +
+        "question therefore opens with the same line — which costs the control nothing, since it " +
+        "recalls against a fresh run_id with nothing in it.";
+    }
+    add(c, "p", "why", why);
 
     if (r.error) {
       add(c, "div", "block empty", "recall failed: " + short(r.error, 300));
@@ -744,6 +834,8 @@
       var arm = arms[a];
       var s = q[arm];
       parts.push(arm, s.started ? 1 : 0, s.done ? 1 : 0, s.turns.length);
+      // Per-arm prompt: the delta strip repaints when either copy lands.
+      parts.push((s.prompt || "").length, s.num, s.driftNotice ? 1 : 0);
       var t = s.turns[s.turns.length - 1];
       parts.push(t ? t.action + ":" + String(t.content || "").length + ":" +
         (t.feedback == null ? "-" : String(t.feedback).length) + ":" + t.latencyMs : "-");

@@ -157,6 +157,15 @@
     return {
       started: false,
       done: false,
+      /* The prompt is per-arm because the arms are NOT handed the same text.
+       * CL-Bench slices the baseline task to a single instance, so the copy it
+       * issues is headed "Question 1/1" on every question where the stateful
+       * copy is headed "Question n/20" — and at the migration the stateful
+       * copy carries a NOTICE paragraph the baseline's never gets. Holding one
+       * prompt per question would silently pick a winner. */
+      prompt: null,
+      num: null,
+      driftNotice: false,
       turns: [], // {action, content, latencyMs, usage, feedback}
       recall: null, // {query, limit, latencyMs, evidence:[…]}
       injected: null, // {lessonCount, block, charsAdded}
@@ -246,13 +255,35 @@
         break;
 
       case "instance.start":
+        if (slot) {
+          if (p.prompt) slot.prompt = p.prompt;
+          if (p.question_num != null) slot.num = p.question_num;
+          slot.driftNotice = !!p.carries_drift_notice;
+        }
         if (q) {
           q.id = q.id ?? p.question_id;
-          q.num = q.num ?? p.question_num;
           q.difficulty = q.difficulty ?? p.difficulty;
           q.budget = q.budget ?? p.query_budget;
-          if (p.prompt && !q.prompt) q.prompt = p.prompt;
-          if (p.carries_drift_notice) q.driftNotice = true;
+          /* Position, prompt and the migration flag are taken from the
+           * STATEFUL arm and OVERWRITTEN when it arrives. First-writer-wins
+           * was wrong here, and wrong in a way that only bit at the migration:
+           * the sliced baseline task reports question_num 1 for every
+           * question, and `stage.change` fires immediately before the stateful
+           * instance.start — teaching the id→index map one event early and
+           * opening a window for a parked stateless instance.start to drain
+           * first. On question 11 of demo-20260811-205341 it did, so the
+           * header read "question 1" and the prompt shown was the baseline's
+           * copy, which does not contain the migration notice the chip beside
+           * it was advertising. The stateless values still fill a gap, so a
+           * lagging ON arm leaves the header populated rather than blank. */
+          if (arm === "stateful") {
+            if (p.question_num != null) q.num = p.question_num;
+            if (p.prompt) q.prompt = p.prompt;
+            q.driftNotice = !!p.carries_drift_notice;
+          } else {
+            q.num = q.num ?? p.question_num;
+            if (p.prompt && !q.prompt) q.prompt = p.prompt;
+          }
         }
         if (slot) slot.started = true;
         if (arm) state.arms[arm].current = index;
