@@ -26,15 +26,41 @@ why: what runs, where the numbers come from, and what the code is avoiding.
 ## What actually runs
 
 ```
-clbench run database_exploration \
+clbench run database_exploration_fixed \
   --task.schedule demo_drift --system mubit_demo \
   --system.model gemini/gemini-2.5-flash \
   --runs 1 --max-workers 2 \
   --live-dashboard --no-live-server
 ```
 
-The real harness, unmodified. `run_demo.py` only sets it up, watches it, and
-checks the result afterwards.
+The real harness, with one task-level correction and nothing else.
+
+**`database_exploration_fixed` is `database_exploration` with the baseline
+slicing repaired.** Same questions, same pools, same seed, same query budget,
+same grader — all inherited. It is a subclass in its own task directory, so no
+shipped CL-Bench file is touched; delete
+`src/tasks/database_exploration_fixed/` and the checkout is exactly as it came.
+It corrects three defects that all follow from one omission — `interface.py`
+says a task with environment state must override `select_run_instances`, and
+`database_exploration` has schema-drift state and does not:
+
+| | stock | corrected |
+|---|---|---|
+| database for a post-migration baseline question | **pre-migration** — the answers are not in it | migrated, same as the memory arm |
+| `Query.instance_index` on the baseline | `0` for every instance | the canonical index |
+| prompt header on the baseline | `Question 1/1` all run long | `Question n/20`, matching the memory arm |
+
+The first is the one that mattered: the control was being scored on questions
+whose data was absent from its database, which depressed `r_base` and inflated
+`g_b` across the entire post-migration half. Full write-up, repro and the
+upstream patch proposal:
+[UPSTREAM_ISSUE_baseline_slicing.md](../UPSTREAM_ISSUE_baseline_slicing.md).
+
+**A number from this demo is therefore not comparable to the published 13.7%**,
+which was measured with the uncorrected control and is biased high. The race
+screen says so on the reference tiles rather than implying parity.
+
+`run_demo.py` only sets it up, watches it, and checks the result afterwards.
 
 **`mubit_demo` is `systems/mubit` with a wire tap and no behavioural
 difference.** Same retrieval key, same lesson text, same `upsert_key`, same
@@ -142,13 +168,26 @@ learned from the stateful arm, parks stateless events that arrive before their
 mapping is known, and raises a banner on all four pages if position and mapping
 ever disagree.
 
+`database_exploration_fixed` corrects this at the source, so a live run now
+reports the true index on both arms. The machinery stays: it is what makes the
+committed recordings from before the fix replay correctly, and it costs one map
+lookup.
+
 **The arms are not handed the same prompt.** Same slicing, second consequence:
-the baseline's copy is headed `Question 1/1` on every question where the
-stateful copy is headed `Question n/20`, and at the migration the stateful copy
-carries a 168-character `NOTICE:` paragraph the baseline's does not — the schema
-change is announced only to the arm with prior assumptions to revise. The turn
-screen therefore holds the prompt **per arm** and prints the delta under it,
-computed from the two texts on the wire rather than described from memory. It
+stock, the baseline's copy is headed `Question 1/1` on every question where the
+stateful copy is headed `Question n/20`. The corrected task removes that, so the
+two copies are now byte-identical *except* at the migration, where the stateful
+copy carries a 168-character `NOTICE:` paragraph the baseline's does not.
+
+That last difference is kept deliberately. The notice reads "may have changed
+since your earlier exploration", and a stateless instance has no earlier
+exploration to revise — handing it that sentence would be symmetric but
+incoherent. Running it against the wrong database was the defect; not telling it
+about a history it does not have is the design.
+
+The turn screen therefore holds the prompt **per arm** and prints the delta
+under it, computed from the two texts on the wire rather than described from
+memory, so whatever remains different is visible rather than asserted. It
 previously held one prompt per question, first writer wins, and called it
 "identical on both arms". That was wrong everywhere and materially wrong at
 question 11: `stage.change` fires immediately before the stateful
@@ -169,15 +208,22 @@ than guessing.
 
 ## Install
 
-`demo/install.py` copies four things into the CL-Bench checkout, all as files
+`demo/install.py` copies five things into the CL-Bench checkout, all as files
 CL-Bench itself does not own:
 
 ```
-systems/mubit/                 → $CLBENCH/src/systems/mubit/
-systems/mubit_demo/            → $CLBENCH/src/systems/mubit_demo/
-demo/schedules/demo_drift.json → $CLBENCH/src/tasks/database_exploration/schedules/
-demo/variants/demo_drift.json  → $CLBENCH/src/tasks/database_exploration/variants/
+systems/mubit/                        → $CLBENCH/src/systems/mubit/
+systems/mubit_demo/                   → $CLBENCH/src/systems/mubit_demo/
+demo/tasks/database_exploration_fixed/ → $CLBENCH/src/tasks/database_exploration_fixed/
+demo/schedules/demo_drift.json        → $CLBENCH/src/tasks/database_exploration/schedules/
+demo/variants/demo_drift.json         → $CLBENCH/src/tasks/database_exploration/variants/
 ```
+
+Nothing is patched. CL-Bench discovers tasks by globbing `src/tasks/*/task.py`,
+so the corrected task registers alongside the stock one rather than replacing
+it, and both remain runnable. The schedule and variant still live under
+`database_exploration/` because CL-Bench resolves those by a hardcoded family
+name, which is why the subclass reuses them unchanged.
 
 **Both the schedule and the variant are required, and the variant is the one
 that matters.** A drift run's length and its migration point come from the
@@ -273,28 +319,23 @@ these are `difficulty: hard`, and a wrong answer scores exactly zero no matter
 how efficiently it was reached, so all 20 memory-OFF questions score 0.000 and
 the entire gain comes from questions 16 and 20.
 
-**Both of those questions are post-migration, and that is a problem with the
-control, not a result.** Questions 16 and 20 are indices 15 and 19, past the
-drift at 10 — and a CL-Bench defect means the baseline never receives the
-migrated database. `_sync_stage_context` only swaps to `products_drifted.db`
-when `_current_question_idx >= _pre_drift_count`, and a sliced baseline task is
-permanently at index 0, so every post-migration question is answered by the
-control against the pre-migration schema. Checked against
-`questions_post_drift.json`: the stored answer is reproduced by the reference
-SQL on the drifted database for **20 of 20** questions and on the pre-migration
-database for **0 of 20**, with 19 of the 20 queries failing outright
-(`no such column: prc_v2`, `no such column: i.status`).
+**That run is superseded — do not present its number.** Both of its correct
+answers, questions 16 and 20, are indices 15 and 19, past the drift at 10 — and
+it was run before the baseline-slicing fix, so on that entire half the control
+was answering against the pre-migration database. Its 4.33% came wholly from
+the region where the control could not win.
 
-So on the post-migration half the control is not measuring no-memory
-performance — it is being scored on questions whose data is absent from its
-database, which depresses `r_base` and inflates `g_b`. In this run the entire
-4.33% comes from that half. Do not present the number as a memory result until
-the control is fixed. Full write-up and proposed patch:
-[UPSTREAM_ISSUE_baseline_slicing.md](../UPSTREAM_ISSUE_baseline_slicing.md).
+Checked against `questions_post_drift.json`: the stored answer is reproduced by
+the reference SQL on the drifted database for **20 of 20** questions and on the
+pre-migration database for **0 of 20**, with 19 of the 20 failing outright
+(`no such column: prc_v2`, `no such column: i.status`). The published 13.7%
+carries the same defect and is biased high for the same reason. Pre-migration
+gains in either are unaffected — both arms share a database there.
 
-The published 13.7% carries the same defect, and the pre-migration half of any
-run does not — the baseline and the memory arm share a database there, so gains
-measured before the drift are unaffected.
+`database_exploration_fixed` corrects it, so a fresh run produces a sound
+number. The figures in this section will be replaced when one has been done;
+they are kept until then so the comparison is on the record rather than quietly
+deleted.
 
 One further signal, stated with its confound: mean queries per question fell
 from **11.7 pre-migration to 7.9 post-migration**, a 32% drop. That is the shape

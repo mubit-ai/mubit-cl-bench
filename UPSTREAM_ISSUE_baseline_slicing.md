@@ -2,6 +2,13 @@
 
 Not filed. Draft for review before posting.
 
+A working reference implementation of the fix — as an additive subclass that
+touches no shipped file — is in
+[`demo/tasks/database_exploration_fixed/task.py`](demo/tasks/database_exploration_fixed/task.py).
+It has been verified end to end through the real harness: both arms now receive
+byte-identical prompts, the baseline reports its canonical `instance_index`, and
+both arms answer post-migration questions against the same migrated database.
+
 ---
 
 ## Baseline instance slicing does not sync task environment state — the control answers post-drift questions against the pre-drift database

@@ -345,10 +345,16 @@ body > header.chrome { margin: 0 0 18px; padding: 12px 28px; }
 
     host.innerHTML =
       tileHTML("hero", "This run · normalized gain", liveVal, liveSubs) +
+      /* Both published references were measured before the baseline-slicing
+       * fix, on a control that never received the migrated database and so
+       * scored lower than it should have on every post-migration question.
+       * That inflates their gain relative to this run's. Saying "same task" was
+       * true of the questions and false of the comparison, so the subtitle now
+       * says which side the bias falls on rather than implying parity. */
       tileHTML(null, "Published · Mubit", D.pct(pub.v, 1),
-        ["3 runs × 40 questions, same task", pub.fromConfig ? "from run.config" : "built-in reference (run.config not received)"]) +
+        ["3 runs × 40, uncorrected control", "biased high — not comparable"]) +
       tileHTML(null, "Published · ICL reference", D.pct(icl.v, 1),
-        ["same task, model and seeds", icl.fromConfig ? "from run.config" : "built-in reference (run.config not received)"]) +
+        ["same model and seeds, same bias", "biased high — not comparable"]) +
       tileHTML(null, "Bootstrap · a run this short", bsVal, bsSubs);
   }
 
@@ -423,9 +429,14 @@ body > header.chrome { margin: 0 0 18px; padding: 12px 28px; }
       "g_b = (mean reward with memory − mean reward without) ÷ (r_max − mean reward without), " +
       "recomputed by demo.js after every question both arms have finished; r_max = " +
       V.fmt(D.R_MAX, 1) + " on this task. ";
+    /* The band is resampled from the published runs, so it inherits their
+     * uncorrected control and sits higher than a corrected run should. A curve
+     * BELOW the band is therefore the expected outcome now, not a bad day —
+     * which is the opposite of what this sentence used to tell the reader. */
     note += band
-      ? "The shaded band is the bootstrap p05–p95 for a run this short — a live curve inside it is " +
-        "indistinguishable from the published system having a normal day" +
+      ? "The shaded band is the bootstrap p05–p95 for a run this short, resampled from the published " +
+        "runs — which were measured with the uncorrected control, so the band sits high and a " +
+        "corrected run is expected to land below it" +
         (bs && bs.curve ? ", and the table lists the percentile points without interpolating. " : ". ")
       : "No bootstrap band is drawn: run.config supplied none, and this page will not invent a " +
         "range it was not given. ";

@@ -184,16 +184,15 @@ memory and **6 of 40** without. The verdict row on the turn screen prints the
 submitted answer beside the expected one, so any red cell can be checked rather
 than taken on faith.
 
-**The control is broken past the migration — know this before you present.** A
-CL-Bench defect means the stateless baseline never receives the migrated
-database: `_sync_stage_context` swaps to `products_drifted.db` only when
-`_current_question_idx >= _pre_drift_count`, and a sliced baseline task sits at
-index 0 forever. Every post-migration question is therefore answered by the
-control against the pre-migration schema, where the required columns do not
-exist — the reference SQL for 19 of the 20 post-drift questions errors outright
-on it. That depresses the baseline and inflates the gain, and the inflation is
-entirely in the post-migration half. Gains measured *before* the migration are
-unaffected, since both arms share a database there. Write-up and proposed patch:
+**Your number is not comparable to the published 13.7%, and that is deliberate.**
+The demo runs `database_exploration_fixed`, which repairs a CL-Bench defect that
+left the stateless control answering every post-migration question against the
+*pre-migration* database — where the data required to answer is simply absent
+(the reference SQL for 19 of the 20 post-drift questions errors outright on it).
+That depressed the control and inflated the gain across the whole post-migration
+half. The published 13.7% was measured before the fix and is biased high, so
+expect a corrected run to land **below** the reference tiles and the bootstrap
+band. The race screen labels them accordingly. Detail:
 [UPSTREAM_ISSUE_baseline_slicing.md](../UPSTREAM_ISSUE_baseline_slicing.md).
 
 **One run is one run.** Twenty questions, n = 1. The published 13.7% is the mean
@@ -231,13 +230,12 @@ pkill -f clbench
 **The embedding service is not answering.** Preflight fails on
 `127.0.0.1:8080`. Start it and re-run — nothing has been spent at that point.
 
-**Someone asks why the baseline's recall key says `Question 1/1`.** Because that
-is genuinely the prompt it received. CL-Bench runs each baseline instance
-against a task sliced to that one instance, so the slice holds one question and
-numbers it 1 of 1 — on every question, all run long. The retrieval key is
-`prompt[:300]`, so the header comes along with it. It costs the control nothing
-(it recalls against a fresh `run_id` with nothing in it), but it is an
-uncontrolled difference between the arms and it is in the upstream write-up.
+**The baseline's recall key says `Question 1/1`.** You are replaying a recording
+made before the fix. Stock CL-Bench slices the baseline task to one instance, so
+its copy of the prompt was headed 1 of 1 on every question and the retrieval key
+— `prompt[:300]` — carried that along. `database_exploration_fixed` corrects it;
+a fresh run shows the same header on both arms. Old recordings still replay,
+they just show what they recorded.
 
 **A wall of `ConnectionResetError` tracebacks in the terminal.** Fixed — the
 collector now swallows the disconnect family, which is what a closed SSE stream

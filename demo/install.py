@@ -7,6 +7,7 @@ the demo claim it runs the real harness rather than a modified one:
 
   systems/mubit/                 → $CLBENCH/src/systems/mubit/
   systems/mubit_demo/            → $CLBENCH/src/systems/mubit_demo/
+  demo/tasks/database_exploration_fixed/ → $CLBENCH/src/tasks/database_exploration_fixed/
   demo/schedules/demo_drift.json → $CLBENCH/src/tasks/database_exploration/schedules/
 
 CL-Bench discovers systems by scanning ``src/systems/*`` (registry.py) and
@@ -78,6 +79,17 @@ def install(clbench: Path, dry_run: bool = False) -> int:
 
     changes = _copy_tree(REPO / "systems" / "mubit", src_root / "systems" / "mubit", dry_run)
     changes += _copy_tree(REPO / "systems" / "mubit_demo", src_root / "systems" / "mubit_demo", dry_run)
+
+    # A new task directory, not a patch to theirs: CL-Bench discovers tasks by
+    # globbing src/tasks/*/task.py, so this registers alongside the stock
+    # database_exploration and leaves every shipped file untouched. Delete the
+    # directory and the checkout is exactly as it came. See its module docstring
+    # for the three baseline-slicing defects it corrects.
+    changes += _copy_tree(
+        REPO / "demo" / "tasks" / "database_exploration_fixed",
+        src_root / "tasks" / "database_exploration_fixed",
+        dry_run,
+    )
 
     variant_dir = src_root / "tasks" / "database_exploration" / "variants"
     if not variant_dir.is_dir():

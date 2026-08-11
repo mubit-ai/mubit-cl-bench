@@ -46,7 +46,20 @@ REPO = Path(__file__).resolve().parent.parent
 DEFAULT_CLBENCH = REPO.parent / "continual-learning-bench"
 DEFAULT_RICEDB = Path.home() / "Mubit" / "ricedb"
 
-TASK = "database_exploration"
+# `database_exploration_fixed` is `database_exploration` with the baseline
+# slicing corrected — same questions, same seed, same budget, same grader; see
+# demo/tasks/database_exploration_fixed/task.py. Stock, the control never
+# receives the migrated database, reports instance_index 0 for every instance,
+# and reads "Question 1/1" throughout. The first of those inflates the gain, so
+# a number produced here is NOT comparable to the published 13.7%, which was
+# measured with the uncorrected control.
+TASK = "database_exploration_fixed"
+# The corrected task is a subclass registered under its own name, so the harness
+# writes its results under that name — but it reads the same databases and
+# question pools, and the committed 3-run artifacts this demo compares against
+# were produced under the original name. Anything addressing *data* or
+# *published results* uses the family; anything addressing *this run* uses TASK.
+TASK_FAMILY = "database_exploration"
 SCHEDULE = "demo_drift"
 SYSTEM = "mubit_demo"
 MODEL = "gemini/gemini-2.5-flash"
@@ -177,8 +190,8 @@ def build_reference() -> dict[str, Any]:
     less, so the true distribution likely sits below this band.
     """
     out: dict[str, Any] = {}
-    mubit = REPO / "results" / TASK / "mubit-db-3.json.gz"
-    icl = REPO / "results" / TASK / "icl-db-3.json.gz"
+    mubit = REPO / "results" / TASK_FAMILY / "mubit-db-3.json.gz"
+    icl = REPO / "results" / TASK_FAMILY / "icl-db-3.json.gz"
 
     if mubit.exists():
         runs, baseline = _rewards(mubit)
@@ -238,9 +251,9 @@ def preflight(clbench: Path, ricedb: Path) -> dict[str, Any]:
     ctx["clbench_exe"] = exe
     say(f"entry point {exe.name}", "ok")
 
-    data = clbench / "data" / TASK
+    data = clbench / "data" / TASK_FAMILY
     if not data.is_dir():
-        raise Fail(f"task data missing at {data} — run `clbench setup {TASK}`")
+        raise Fail(f"task data missing at {data} — run `clbench setup {TASK_FAMILY}`")
     say(f"task data {data}", "ok")
 
     env_file = read_env_file(clbench / ".env")
