@@ -33,6 +33,7 @@ import argparse
 import json
 import os
 import queue
+import sys
 import threading
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -316,6 +317,28 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.flush()
 
 
+class QuietServer(ThreadingHTTPServer):
+    """A dropped connection is normal here, and a traceback for it is not.
+
+    Four pages hold long-lived SSE streams and Chrome speculatively opens
+    connections it then closes without sending a request line. Both surface as
+    ConnectionResetError inside `handle_one_request`, which socketserver's
+    default `handle_error` renders as a 20-line traceback on stderr — during a
+    demo, in the same terminal carrying the harness's progress output, where it
+    reads as a crash. The stream handler already swallows these on the write
+    side; this is the read side.
+
+    Only the disconnect family is silenced. Anything else still prints, because
+    a genuine handler bug during a live run must not be hidden by a filter put
+    here for cosmetics.
+    """
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        if isinstance(sys.exc_info()[1], (BrokenPipeError, ConnectionResetError, TimeoutError)):
+            return
+        super().handle_error(request, client_address)
+
+
 def serve(
     *,
     root: Path,
@@ -327,7 +350,7 @@ def serve(
 ) -> tuple[ThreadingHTTPServer, Hub, Optional[SnapshotWatcher]]:
     hub = Hub(recording, run_group=run_group)
     handler = type("BoundHandler", (Handler,), {"hub": hub, "root": root})
-    server = ThreadingHTTPServer((host, port), handler)
+    server = QuietServer((host, port), handler)
     server.daemon_threads = True
     watcher = None
     if live_dir is not None:

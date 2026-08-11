@@ -273,6 +273,29 @@ these are `difficulty: hard`, and a wrong answer scores exactly zero no matter
 how efficiently it was reached, so all 20 memory-OFF questions score 0.000 and
 the entire gain comes from questions 16 and 20.
 
+**Both of those questions are post-migration, and that is a problem with the
+control, not a result.** Questions 16 and 20 are indices 15 and 19, past the
+drift at 10 — and a CL-Bench defect means the baseline never receives the
+migrated database. `_sync_stage_context` only swaps to `products_drifted.db`
+when `_current_question_idx >= _pre_drift_count`, and a sliced baseline task is
+permanently at index 0, so every post-migration question is answered by the
+control against the pre-migration schema. Checked against
+`questions_post_drift.json`: the stored answer is reproduced by the reference
+SQL on the drifted database for **20 of 20** questions and on the pre-migration
+database for **0 of 20**, with 19 of the 20 queries failing outright
+(`no such column: prc_v2`, `no such column: i.status`).
+
+So on the post-migration half the control is not measuring no-memory
+performance — it is being scored on questions whose data is absent from its
+database, which depresses `r_base` and inflates `g_b`. In this run the entire
+4.33% comes from that half. Do not present the number as a memory result until
+the control is fixed. Full write-up and proposed patch:
+[UPSTREAM_ISSUE_baseline_slicing.md](../UPSTREAM_ISSUE_baseline_slicing.md).
+
+The published 13.7% carries the same defect, and the pre-migration half of any
+run does not — the baseline and the memory arm share a database there, so gains
+measured before the drift are unaffected.
+
 One further signal, stated with its confound: mean queries per question fell
 from **11.7 pre-migration to 7.9 post-migration**, a 32% drop. That is the shape
 learning would have — but the post-migration questions come from a *different
