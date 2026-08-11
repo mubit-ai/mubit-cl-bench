@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Overview — CL-Bench instrument</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <h1>CL-Bench instrument</h1>
+  <nav>
+    <a href="index.html" aria-current="page">Overview</a>
+    <a href="bsm.html">Spectrum</a>
+    <a href="db.html">Database</a>
+    <a href="poker.html">Poker</a>
+    <button id="theme">Theme</button>
+  </nav>
+</header>
+<main id="main"></main>
+<script src="../viz_data/index.js"></script>
+<script src="chart.js"></script>
+<script>
+(function () {
+  "use strict";
+  const D = window.VIZ_INDEX;
+  const A = D.artifacts;
+  const main = document.getElementById("main");
+
+  const SYS_COLOR = {
+    icl: "--sys-icl",
+    mubit: "--sys-mubit",
+    mubit_bsm: "--sys-mubit",
+    mubit_full: "--sys-mubit-full",
+    mubit_genai: "--sys-mubit-genai",
+  };
+  const el = (tag, cls, html) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (html != null) n.innerHTML = html;
+    return n;
+  };
+  function act(title, lede) {
+    const s = el("section", "act");
+    s.appendChild(el("h2", null, title));
+    if (lede) s.appendChild(el("p", "lede", lede));
+    main.appendChild(s);
+    return s;
+  }
+  const pct1 = (v) => (v == null ? "—" : (v * 100).toFixed(1) + "%");
+  const f3 = (v) => (v == null ? "—" : v.toFixed(3));
+
+  const SHORT = {
+    blind_spectrum_monitoring: "Spectrum",
+    database_exploration: "Database",
+    exploitable_poker: "Poker",
+  };
+  const MODEL = (m) => (m || "").replace("gemini/gemini-", "").replace("gemini-", "");
+
+  /* Comparability = same task AND same schedule AND same model. Anything else
+   * sitting side by side would imply a head-to-head that was never run. */
+  const bands = [];
+  for (const id of Object.keys(A)) {
+    const k = A[id].comparability_key;
+    let b = bands.find((x) => x.key === k);
+    if (!b) bands.push((b = { key: k, task: A[id].task, schedule: A[id].schedule, model: A[id].model, ids: [] }));
+    b.ids.push(id);
+  }
+  const ORDER = ["blind_spectrum_monitoring", "database_exploration", "exploitable_poker"];
+  bands.sort((a, b) => ORDER.indexOf(a.task) - ORDER.indexOf(b.task) || a.model.localeCompare(b.model));
+  const flat = bands.flatMap((b) => b.ids);
+
+  // ============================================================== intro ===
+  {
+    const c = D.verification_counts;
+    main.appendChild(el("p", "lede",
+      "An analysis instrument, not a demo. Every number is re-derived from " +
+      "<code>results/*.json.gz</code> by <code>scripts/extract.py</code>; " +
+      "<code>chart_data.json</code> and the data report are checked against it, never read as inputs. " +
+      "No paper figures appear anywhere — where a comparison was not run, it is drawn as an empty slot."));
+
+    const tiles = el("div", "tiles");
+    const t = (lbl, val, sub, cls) => {
+      const d = el("div", "tile");
+      d.appendChild(el("div", "lbl", lbl));
+      const v = el("div", "val", val);
+      if (cls) v.className = "val " + cls;
+      d.appendChild(v);
+      d.appendChild(el("div", "sub", sub));
+      return d;
+    };
+    tiles.appendChild(t("Report claims verified", String(c.PASS), "re-derived from the artifacts", "pass"));
+    tiles.appendChild(t("Mismatches", String(c.MISMATCH), c.MISMATCH ? "see table below" : "the report holds up", c.MISMATCH ? "mismatch" : "pass"));
+    tiles.appendChild(t("Artifacts", String(Object.keys(A).length), "3 tasks · 3 runs each · 264.8 MB raw"));
+    tiles.appendChild(t("Stored interactions", Object.values(A).reduce((a, x) => a + x.total_interactions, 0).toLocaleString(), "every prompt, action and observation"));
+    main.appendChild(tiles);
+
+    main.appendChild(el("div", "flag",
+      "<b>Not verified here.</b> §7.2 — that the v2/v4 spectrum adapter's system prompt states the task's " +
+      "grid geometry and names two exact ground-truth frequencies — lives in " +
+      "<code>systems/mubit_bsm/system.py</code> and in git history, not in the artifacts. No chart can " +
+      "show it, and it is the single finding that most determines whether the spectrum task belongs in a " +
+      "demo. It remains open."));
+  }
+
+  // ======================================================= verification ===
+  {
+    const s = act("1 · Verification gate",
+      "Every claim in the data report that is derivable from the artifacts, re-derived and compared " +
+      "before any chart was drawn. A mismatch here would have changed what the other pages plot.");
+
+    const card = el("div", "card");
+    card.appendChild(el("h3", null, "extract.py — report versus artifacts"));
+    card.appendChild(el("p", "sub",
+      D.verification_counts.PASS + " pass, " + D.verification_counts.MISMATCH + " mismatch, " +
+      D.verification_counts["NO DATA"] + " no data. Tolerances are set to the report's own displayed precision."));
+
+    const secs = [...new Set(D.verification.map((r) => r.section))];
+    const sum = el("table");
+    sum.innerHTML = "<thead><tr><th>Section</th><th>Checks</th><th>Result</th></tr></thead>";
+    const tb = el("tbody");
+    for (const sec of secs) {
+      const rows = D.verification.filter((r) => r.section === sec);
+      const bad = rows.filter((r) => r.status === "MISMATCH").length;
+      const tr = el("tr");
+      tr.innerHTML = "<td>" + sec + "</td><td>" + rows.length + "</td>" +
+        '<td class="' + (bad ? "mismatch" : "pass") + '">' + (bad ? bad + " MISMATCH" : "all pass") + "</td>";
+      tb.appendChild(tr);
+    }
+    sum.appendChild(tb);
+    card.appendChild(sum);
+
+    V.tableView(card,
+      ["Section", "Claim", "Report says", "Artifacts say", "Status"],
+      D.verification.map((r) => [r.section, r.claim,
+        Array.isArray(r.expected) ? r.expected.map((x) => x.toFixed(3)).join(" / ") : String(r.expected) + (r.unit || ""),
+        Array.isArray(r.actual) ? r.actual.map((x) => x.toFixed(3)).join(" / ") : (typeof r.actual === "number" ? r.actual.toFixed(4) : String(r.actual)) + (r.unit || ""),
+        r.status]));
+    s.appendChild(card);
+  }
+
+  // ====================================================== gain overview ===
+  {
+    const s = act("2 · Normalized gain, every artifact",
+      "g_b = (r_sf − r_sl) / (r_max − r_sl). Vertical rules separate comparability bands — same task, " +
+      "same schedule, same model. Bars in different bands were never run against each other and must " +
+      "not be read as a comparison.");
+
+    const groups = [], dividers = [];
+    let i = 0;
+    for (const b of bands) {
+      for (const id of b.ids) {
+        groups.push({
+          label: id.replace(/-3\.5flash$/, "").replace(/-3$/, ""),
+          sublabel: SHORT[b.task] + " · " + b.schedule + " · " + MODEL(b.model),
+          bars: [{ name: A[id].system, color: SYS_COLOR[A[id].system] || "--sys-mubit", value: A[id].g_b }],
+        });
+        i++;
+      }
+      if (i < flat.length) dividers.push(i - 1);
+    }
+    V.bars(s, {
+      title: "Normalized gain by artifact",
+      subtitle: "Positive means the stateful run beat its own memory-reset control.",
+      height: 320, width: 980, dividers: dividers,
+      y: { label: "g_b", format: pct1 },
+      groups: groups,
+      note: "Poker's two negative bars are real: at 120 hands the memory system scores below its own " +
+            "stateless control. The spectrum band's 53.7% is inflated by a collapsing denominator — see " +
+            "the Spectrum page, §4.",
+    });
+  }
+
+  // ================================================ stateful vs stateless =
+  {
+    const s = act("3 · What the gain is made of",
+      "Normalized gain is a ratio, so it moves when either side moves. Plotting both sides for every " +
+      "artifact shows which one actually did.");
+
+    V.bars(s, {
+      title: "Stateful and stateless reward, paired",
+      subtitle: "Reward is task-specific: IoU for spectrum, accuracy-derived for database, chips for poker.",
+      height: 330, width: 980,
+      y: { label: "Mean reward", format: f3 },
+      groups: flat.map((id) => ({
+        label: id.replace(/-3\.5flash$/, "").replace(/-3$/, ""),
+        sublabel: SHORT[A[id].task],
+        bars: [
+          { name: "Stateful (r_sf)", color: SYS_COLOR[A[id].system] || "--sys-mubit", value: A[id].r_sf },
+          { name: "Stateless (r_sl)", color: "--sys-baseline", value: A[id].r_sl },
+        ],
+      })),
+      note: "The two poker artifacts at 120 hands are the pair where the violet bar sits above the " +
+            "coloured one. Note also mubit-bsm-v4: its stateful bar is barely above mubit-bsm-registry's, " +
+            "while its stateless bar is half as tall.",
+    });
+  }
+
+  // ============================================================ per-run ===
+  {
+    const s = act("4 · Every run, n = 3",
+      "Three runs per configuration is all that exists anywhere in this repo. Shown as points, never as " +
+      "a bar with an error bar — at n=3 an error bar implies a distribution that was not measured.");
+
+    V.dots(s, {
+      title: "Per-run score by artifact",
+      subtitle: "Each dot is one complete run; the vertical rule is the mean of the three.",
+      width: 980,
+      x: { label: "Run score (task-native units)", format: f3 },
+      rows: flat.map((id) => ({
+        label: id.replace(/-3\.5flash$/, ""),
+        sublabel: SHORT[A[id].task] + " · " + MODEL(A[id].model),
+        color: SYS_COLOR[A[id].system] || "--sys-mubit",
+        values: A[id].runs.map((r) => r.score),
+      })),
+      note: "Scores are not comparable across tasks — the rows are stacked for compactness, not for " +
+            "comparison. Within the database band, mubit-db-3 (0.205 / 0.122 / 0.213) and icl-db-3 " +
+            "(0.113 / 0.177 / 0.145) visibly overlap.",
+    });
+  }
+
+  // ============================================================== gaps ====
+  {
+    const s = act("5 · What was never measured",
+      "Drawn here as a list rather than as absent bars elsewhere. Every competitor figure in " +
+      "chart_data.json is a GPT-5.4 paper value with no run behind it in this repo, so none appears on " +
+      "any chart in this instrument.");
+
+    const card = el("div", "card");
+    card.appendChild(el("h3", null, "Missing counterparts and degraded fields"));
+    const t = el("table");
+    t.innerHTML = "<thead><tr><th>Missing</th><th>Consequence</th></tr></thead>";
+    const tb = el("tbody");
+    [
+      ["ICL baseline for blind_spectrum_monitoring", "No measured head-to-head on the strongest task. Every spectrum-vs-ICL claim would be a paper figure."],
+      ["ICL baseline at 120 poker hands", "The only poker head-to-head is n=5 hands, which cannot support a claim."],
+      ["Mem0 / ACE / ICL-Notepad runs", "Zero artifacts. All competitor bars in chart_data.json are GPT-5.4 paper values."],
+      ["Memory store contents", "trace.system_memory is None in all 12 artifacts. Only retrieved lessons are visible, never the full store, never what was written and never recalled."],
+      ["Lesson write events", "Only reads are recorded. No remember() timestamps, no reinforcement events — the mubit_full reinforcement story is invisible in the data."],
+      ["Spectrum registry contents", "Only registry_size (an integer). hit_count, first_seen_scan and inferred flags are lost."],
+      ["The augmented prompt sent to the LLM", "query.prompt is the harness-side prompt. Spectrum prompts contain no REGISTRY block despite the adapter injecting one."],
+      ["Per-scan stage labels", "scan_results carries only scan_idx. The stage boundaries at scan 30/60 in chart_data.json are an assumption, not data — so they are not drawn."],
+      ["Cost on every gemini-3.5-flash run", "cost_usd is literal 0, not null. No cost chart covers spectrum or 120-hand poker."],
+      ["Statistical power", "n=3 everywhere. No confidence interval or p-value is honest at this n."],
+    ].forEach((r) => {
+      const tr = el("tr");
+      tr.innerHTML = "<td>" + r[0] + "</td><td>" + r[1] + "</td>";
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    card.appendChild(t);
+    s.appendChild(card);
+  }
+
+  document.getElementById("theme").addEventListener("click", () => {
+    const r = document.documentElement;
+    r.dataset.theme = r.dataset.theme === "light" ? "dark" : r.dataset.theme === "dark" ? "" : "light";
+    if (!r.dataset.theme) r.removeAttribute("data-theme");
+  });
+})();
+</script>
+</body>
+</html>

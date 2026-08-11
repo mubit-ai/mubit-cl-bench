@@ -1,0 +1,182 @@
+/* CL-Bench visualisation instrument — shared tokens and chrome.
+ *
+ * Palette validated with the dataviz validator in BOTH modes:
+ *   light #2a78d6,#eb6834,#1baf7a,#eda100,#4a3aa7 — all checks pass
+ *   dark  #3987e5,#d95926,#199e70,#c98500,#9085e9 — all checks pass
+ * Light mode WARNs sub-3:1 on aqua and yellow, so every chart ships a table
+ * view (the relief channel). Series colors are bound to a SYSTEM, never to a
+ * rank, so filtering never repaints a survivor.
+ */
+
+:root {
+  color-scheme: light;
+  --surface: #fcfcfb;
+  --plane: #f9f9f7;
+  --text-1: #0b0b0b;
+  --text-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --band: #f0efec;
+  --border: rgba(11, 11, 11, 0.1);
+
+  /* identity — one hue per system, fixed across every page */
+  --sys-mubit: #2a78d6;
+  --sys-icl: #eb6834;
+  --sys-mubit-full: #1baf7a;
+  --sys-mubit-genai: #eda100;
+  --sys-baseline: #4a3aa7;
+
+  /* state — reserved meaning, never reused as a series color */
+  --st-good: #0ca30c;
+  --st-warning: #fab219;
+  --st-serious: #ec835a;
+  --st-critical: #d03b3b;
+  --st-neutral: #c3c2b7;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --surface: #1a1a19;
+    --plane: #0d0d0d;
+    --text-1: #ffffff;
+    --text-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --band: #232321;
+    --border: rgba(255, 255, 255, 0.1);
+    --sys-mubit: #3987e5;
+    --sys-icl: #d95926;
+    --sys-mubit-full: #199e70;
+    --sys-mubit-genai: #c98500;
+    --sys-baseline: #9085e9;
+    --st-neutral: #383835;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #1a1a19;
+  --plane: #0d0d0d;
+  --text-1: #ffffff;
+  --text-2: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --band: #232321;
+  --border: rgba(255, 255, 255, 0.1);
+  --sys-mubit: #3987e5;
+  --sys-icl: #d95926;
+  --sys-mubit-full: #199e70;
+  --sys-mubit-genai: #c98500;
+  --sys-baseline: #9085e9;
+  --st-neutral: #383835;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--plane);
+  color: var(--text-1);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  padding: 0 0 80px;
+}
+
+header.top {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 28px;
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+header.top h1 { font-size: 15px; margin: 0; font-weight: 600; }
+header.top nav { display: flex; gap: 14px; margin-left: auto; align-items: baseline; }
+header.top nav a { color: var(--text-2); text-decoration: none; font-size: 13px; }
+header.top nav a[aria-current] { color: var(--text-1); font-weight: 600; }
+header.top button {
+  font: inherit; font-size: 12px; cursor: pointer; color: var(--text-2);
+  background: var(--plane); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 10px;
+}
+
+main { max-width: 1080px; margin: 0 auto; padding: 28px; }
+
+section.act { margin: 0 0 12px; }
+section.act > h2 {
+  font-size: 13px; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--muted); font-weight: 600; margin: 38px 0 6px;
+}
+section.act > p.lede { color: var(--text-2); margin: 0 0 18px; max-width: 74ch; }
+
+.card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px 14px;
+  margin: 0 0 20px;
+}
+.card h3 { font-size: 15px; margin: 0 0 2px; font-weight: 600; }
+.card p.sub { margin: 0 0 12px; color: var(--text-2); font-size: 13px; max-width: 78ch; }
+.card p.note {
+  margin: 10px 0 0; color: var(--muted); font-size: 12px; max-width: 82ch;
+  border-top: 1px solid var(--border); padding-top: 9px;
+}
+
+.plot { overflow-x: auto; }
+.plot svg { display: block; width: 100%; min-width: 560px; height: auto; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; font-size: 12px; color: var(--text-2); }
+.lg-item { display: inline-flex; align-items: center; gap: 6px; }
+.lg-swatch { width: 11px; height: 11px; border-radius: 3px; background: var(--sw); display: inline-block; }
+.lg-swatch.lg-dash { height: 3px; border-radius: 2px; background: none;
+  border-top: 2px dashed var(--sw); }
+
+.tip {
+  position: absolute; pointer-events: none; z-index: 30;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; font-size: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .16); min-width: 150px;
+}
+.tip .th { font-weight: 600; margin-bottom: 4px; color: var(--text-1); }
+.tip .tr { display: flex; align-items: center; gap: 6px; color: var(--text-2); white-space: nowrap; }
+.tip .tr b { margin-left: auto; color: var(--text-1); font-variant-numeric: tabular-nums; padding-left: 12px; }
+.tip .sw { width: 9px; height: 9px; border-radius: 2px; background: var(--sw); display: inline-block; }
+
+details.tv { margin-top: 10px; }
+details.tv summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.tv-scroll { overflow-x: auto; max-height: 340px; overflow-y: auto; margin-top: 8px; }
+table { border-collapse: collapse; font-size: 12px; width: 100%; }
+th, td { text-align: left; padding: 4px 12px 4px 0; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--surface); }
+td { color: var(--text-2); font-variant-numeric: tabular-nums; }
+
+.tiles { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+.tile {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 18px; min-width: 168px; flex: 1;
+}
+.tile .lbl { color: var(--text-2); font-size: 12px; }
+.tile .val { font-size: 30px; font-weight: 600; margin-top: 4px; line-height: 1.1; }
+.tile .sub { color: var(--muted); font-size: 11px; margin-top: 4px; }
+
+.flag {
+  border-left: 3px solid var(--st-critical);
+  background: var(--surface); border-radius: 0 8px 8px 0;
+  padding: 12px 16px; margin: 0 0 20px; font-size: 13px; color: var(--text-2);
+}
+.flag b { color: var(--text-1); }
+.flag.warn { border-left-color: var(--st-warning); }
+.flag.ok { border-left-color: var(--st-good); }
+
+.pill { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+.pass { color: var(--st-good); }
+.mismatch { color: var(--st-critical); font-weight: 600; }

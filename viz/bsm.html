@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Blind Spectrum Monitoring — CL-Bench instrument</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <h1>CL-Bench instrument</h1>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="bsm.html" aria-current="page">Spectrum</a>
+    <a href="db.html">Database</a>
+    <a href="poker.html">Poker</a>
+    <button id="theme">Theme</button>
+  </nav>
+</header>
+<main id="main"></main>
+<script src="../viz_data/bsm.js"></script>
+<script src="chart.js"></script>
+<script>
+(function () {
+  "use strict";
+  const D = window.VIZ_BSM;
+  const SP = D.spectrum, A = D.artifacts;
+  const main = document.getElementById("main");
+
+  const V1 = "mubit-bsm-3.5flash";
+  const V2 = "mubit-bsm-registry-3.5flash";
+  const V4 = "mubit-bsm-v4-3.5flash";
+  const COLOR = { [V1]: "--sys-mubit-genai", [V2]: "--sys-mubit-full", [V4]: "--sys-mubit" };
+  const NAME = { [V1]: "v1 · prose lessons", [V2]: "v2 · registry", [V4]: "v4 · registry + filter" };
+
+  const iou = (v) => (v == null ? "—" : v.toFixed(2));
+  const el = (tag, cls, html) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (html != null) n.innerHTML = html;
+    return n;
+  };
+  function act(title, lede) {
+    const s = el("section", "act");
+    s.appendChild(el("h2", null, title));
+    if (lede) s.appendChild(el("p", "lede", lede));
+    main.appendChild(s);
+    return s;
+  }
+  const mean = (xs) => { const v = xs.filter((x) => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+
+  /* min/max envelope across the 3 runs — the honest n=3 spread */
+  function envelope(aid, field) {
+    const runs = A[aid].runs.map((r) => r[field]);
+    const n = Math.max(...runs.map((r) => r.length));
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const vals = runs.map((r) => r[i]).filter((v) => v != null);
+      if (vals.length) out.push([i + 1, Math.min(...vals), Math.max(...vals)]);
+    }
+    return out;
+  }
+  const idx = (arr) => arr.map((v, i) => [i + 1, v]);
+
+  // ====================================================== disclosure ======
+  main.appendChild(el("div", "flag",
+    "<b>Read before using anything on this page.</b> The v2 and v4 adapters inject a system prompt that, " +
+    "per §7.2 of the data report, states the task's grid geometry and names two exact ground-truth " +
+    "frequencies (127.5 and 151.5 MHz). That claim is <b>not verified by this instrument</b> — it lives in " +
+    "<code>systems/mubit_bsm/system.py</code>, not in the artifacts, and no chart can show it. " +
+    "<b>v1 does not use that prompt and is clean.</b> Treat every v2/v4 number here as provisional."));
+
+  // ====================================================== the ribbon ======
+  {
+    const s = act("1 · The band itself",
+      "Every other chart on this page is a metric about the spectrum. This one is the spectrum. " +
+      "Each row is one scan of the 0–168 MHz band; each row is drawn from the scan's own scored " +
+      "intervals, not resampled. Red is the only colour that means danger: the agent declared a band " +
+      "free while a transmitter was sitting in it.");
+
+    const v4run = SP[V4].runs[0], v4base = SP[V4].baseline;
+    const tiles = el("div", "tiles");
+    const t = (lbl, val, sub) => {
+      const d = el("div", "tile");
+      d.appendChild(el("div", "lbl", lbl));
+      d.appendChild(el("div", "val", val));
+      d.appendChild(el("div", "sub", sub));
+      return d;
+    };
+    tiles.appendChild(t("Scan 1 IoU", iou(v4run.scans[0].score), v4run.scans[0].n_reported + " of " + v4run.scans[0].n_gt + " free regions found"));
+    tiles.appendChild(t("Scan 90 IoU", iou(v4run.scans[89].score), v4run.scans[89].n_reported + " of " + v4run.scans[89].n_gt + " free regions found"));
+    tiles.appendChild(t("Unsafe MHz, scan 1", V.fmt(v4run.scans[0].unsafe_bw, 1), "claimed free, actually occupied"));
+    tiles.appendChild(t("Unsafe MHz, scan 90", V.fmt(v4run.scans[89].unsafe_bw, 1), "claimed free, actually occupied"));
+    s.appendChild(tiles);
+
+    V.heat(s, {
+      title: "Stateful — v4, run 0, all 90 scans",
+      subtitle: "Memory carries across scans. Rows run top (scan 1) to bottom (scan 90).",
+      scans: v4run.scans, band: SP[V4].band, rowH: 5,
+      note: "The red field in the upper rows is the agent claiming most of the band is free while it has " +
+            "only seen two transmitters. As the registry fills, red collapses to nothing and the 13 true " +
+            "gaps resolve exactly — scan 90 scores IoU 1.000 with 13 of 13 regions matched.",
+    });
+
+    V.heat(s, {
+      title: "Stateless — v4 baseline, same 90 scans, memory reset every scan",
+      subtitle: "The identical system and the identical scans, with no memory carried between them.",
+      scans: v4base.scans, band: SP[V4].band, rowH: 5,
+      note: "This is the control, and it is the comparison that matters: the geometry never resolves. " +
+            "Recovered from baseline_trace.instance_traces[i].result.metrics.scan_results[0] — 90 " +
+            "single-scan sub-traces stitched by scan_idx. The data report states baseline metrics are " +
+            "empty; that is true of baseline_trace.result.metrics, but the per-instance traces do carry them.",
+    });
+  }
+
+  // ============================================== stateful vs stateless ===
+  {
+    const s = act("2 · Stateful versus stateless, unsmoothed",
+      "Mean of 3 runs with a min–max envelope. No moving average — the existing chart2 PNG applies a " +
+      "3-wide convolution before plotting and does not disclose it, which flatters the curve.");
+
+    V.lines(s, {
+      title: "Per-scan IoU over 90 scans — v4",
+      subtitle: "Stateful climbs and holds; the stateless control stays flat for all 90 scans.",
+      height: 340,
+      x: { label: "Scan", domain: [1, 90], format: (v) => String(Math.round(v)) },
+      y: { label: "IoU (spectrum availability accuracy)", domain: [0, 1], format: iou },
+      series: [
+        { id: "sf", name: "Stateful (memory on)", color: COLOR[V4],
+          values: idx(A[V4].series.mean_reward_by_index), band: envelope(V4, "reward_by_index") },
+        { id: "sl", name: "Stateless (memory reset each scan)", color: "--sys-baseline", dash: true,
+          values: idx(A[V4].series.baseline_reward_by_index) },
+      ],
+      note: "Mean stateful IoU 0.647 against a stateless 0.237. The gap needs no normalisation to land. " +
+            "Envelope is min–max of the 3 runs (0.6022 / 0.6871 / 0.6512), not a confidence interval — " +
+            "n=3 cannot support one.",
+    });
+  }
+
+  // ================================================= memory accumulation ==
+  {
+    const s = act("3 · Does the memory actually drive it?",
+      "Two plots on one shared scan axis, deliberately not a dual-axis chart: overlaying a 0–21 count on " +
+      "a 0–1 accuracy scale would invent an alignment the data does not contain. Read them stacked.");
+
+    V.lines(s, {
+      title: "Registry size — transmitters retained, v4 run 0",
+      subtitle: "The stateful run accumulates and saturates; the stateless control cannot.",
+      height: 240,
+      x: { label: "Scan", domain: [1, 90], format: (v) => String(Math.round(v)) },
+      y: { label: "Transmitters in registry", domain: [0, 24], format: (v) => String(Math.round(v)) },
+      series: [
+        { id: "reg", name: "Stateful registry", color: COLOR[V4], step: true, values: idx(SP[V4].runs[0].registry_size) },
+        { id: "breg", name: "Stateless registry (reset each scan)", color: "--sys-baseline", dash: true, step: true,
+          values: idx(SP[V4].baseline.registry_size) },
+      ],
+      note: "2 → 21, saturating around scan 60. Ground truth is 13 free regions, so the registry " +
+            "over-counts at 21 — it is tracking transmitters, not gaps, and some are double-counted. " +
+            "v1 is absent here: the mubit_genai adapter records no registry_size at all.",
+    });
+
+    V.lines(s, {
+      title: "Per-scan IoU on the same axis — v4 run 0",
+      subtitle: "Compare inflection against the saturation point above.",
+      height: 240,
+      x: { label: "Scan", domain: [1, 90], format: (v) => String(Math.round(v)) },
+      y: { label: "IoU", domain: [0, 1], format: iou },
+      series: [{ id: "s", name: "IoU, run 0", color: COLOR[V4], values: idx(SP[V4].runs[0].score_curve) }],
+      note: "First half 0.498, second half 0.707 for this run. The registry saturates near scan 60 while " +
+            "IoU keeps climbing after it, so registry size alone is not the whole mechanism.",
+    });
+
+    V.lines(s, {
+      title: "Unsafe bandwidth claimed per scan — v4 run 0 versus its baseline",
+      subtitle: "MHz the agent declared free while a transmitter occupied it. Lower is safer.",
+      height: 250,
+      x: { label: "Scan", domain: [1, 90], format: (v) => String(Math.round(v)) },
+      y: { label: "Unsafe MHz claimed", format: (v) => String(Math.round(v)) },
+      series: [
+        { id: "u", name: "Stateful", color: COLOR[V4], values: idx(SP[V4].runs[0].scans.map((x) => x.unsafe_bw)) },
+        { id: "ub", name: "Stateless", color: "--sys-baseline", dash: true,
+          values: idx(SP[V4].baseline.scans.map((x) => x.unsafe_bw)) },
+      ],
+      note: "The metric with a physical consequence — claiming occupied spectrum is free causes " +
+            "interference, whereas missing free spectrum only wastes it. Stateful reaches 0 unsafe MHz; " +
+            "the stateless control never does.",
+    });
+  }
+
+  // ========================================================= the confound ==
+  {
+    const s = act("4 · Why the +53.7% headline does not survive",
+      "The report's §7.1 charge is that v4's normalized gain comes from its stateless baseline " +
+      "collapsing rather than its stateful score improving. extract.py reproduced every number in that " +
+      "charge exactly. This chart is that finding.");
+
+    main.appendChild(el("div", "flag warn",
+      "<b>Confirmed.</b> Stateful moved 0.6385 → 0.6468 (<b>+1.3% relative</b>). The stateless baseline " +
+      "fell 0.4697 → 0.2366 (<b>−49.6%</b>). g_b is (r_sf − r_sl) / (r_max − r_sl), so almost the entire " +
+      "31.8% → 53.7% jump is the denominator moving."));
+
+    V.bars(s, {
+      title: "Stateful and stateless reward, side by side, across adapter versions",
+      subtitle: "Same task, same model, same 90 scans, same 3 runs. Only the adapter differs.",
+      height: 300,
+      y: { label: "Mean IoU", domain: [0, 0.75], format: iou },
+      groups: [V1, V2, V4].map((aid) => ({
+        label: NAME[aid],
+        sublabel: "g_b " + (A[aid].g_b * 100).toFixed(1) + "%",
+        bars: [
+          { name: "Stateful (r_sf)", color: COLOR[aid], value: A[aid].r_sf },
+          { name: "Stateless (r_sl)", color: "--sys-baseline", value: A[aid].r_sl },
+        ],
+      })),
+      note: "Read the blue-family bars left to right: 0.310 → 0.638 → 0.647. The real system improvement " +
+            "happened between v1 and v2. Now read the violet bars: 0.220 → 0.470 → 0.237. v4's headline " +
+            "is that violet bar falling, not the coloured bar rising.",
+    });
+
+    V.lines(s, {
+      title: "What the v4 filter actually changed — transmitters reported per scan, stateless baseline",
+      subtitle: "v4 added a post-filter clamping reports to the registry. This is its effect on the control.",
+      height: 260,
+      x: { label: "Scan", domain: [1, 90], format: (v) => String(Math.round(v)) },
+      y: { label: "Transmitters reported", format: (v) => String(Math.round(v)) },
+      series: [
+        { id: "b2", name: "v2 baseline", color: COLOR[V2], values: idx(SP[V2].baseline.reported_per_scan) },
+        { id: "b4", name: "v4 baseline", color: COLOR[V4], values: idx(SP[V4].baseline.reported_per_scan) },
+      ],
+      note: "Measured across all 3 runs, the filter moved the STATEFUL system 16.74 → 16.16 reported " +
+            "transmitters per scan (−3.5%) and the STATELESS baseline 8.11 → 3.31 (−59%). It barely " +
+            "touched the system it was written for and gutted the control. In v2 the baseline sometimes " +
+            "over-reported into an accidental exact match — 10 of its 90 scans scored IoU 1.000. " +
+            "In v4, zero do, and its best scan is 0.320.",
+    });
+  }
+
+  // ============================================================ per-run ===
+  {
+    const s = act("5 · All the data, n = 3",
+      "Three runs per configuration is every run that exists. Shown as points rather than a bar with an " +
+      "error bar, because an error bar at n=3 implies a distribution that was never measured.");
+
+    V.dots(s, {
+      title: "Per-run mean IoU",
+      subtitle: "Each dot is one complete 90-scan run.",
+      x: { label: "Mean IoU across 90 scans", domain: [0, 0.8], format: iou },
+      rows: [V4, V2, V1].map((aid) => ({
+        label: NAME[aid], sublabel: aid, color: COLOR[aid],
+        values: A[aid].runs.map((r) => r.score),
+      })),
+      note: "v2 and v4 stateful runs overlap heavily (0.597/0.711/0.608 against 0.602/0.687/0.651); " +
+            "on stateful performance alone the two adapters are not distinguishable at this n.",
+    });
+
+    V.lines(s, {
+      title: "Response latency per scan — v4",
+      subtitle: "Mean of 3 runs.",
+      height: 240,
+      x: { label: "Scan", domain: [1, 90], format: (v) => String(Math.round(v)) },
+      y: { label: "Seconds", format: (v) => String(Math.round(v)) },
+      series: [{ id: "l", name: "Latency", color: COLOR[V4], values: idx(A[V4].series.mean_latency_by_index) }],
+      note: "No cost chart on this page: every BSM artifact ran on gemini-3.5-flash, where cost_usd is " +
+            "recorded as literal 0 rather than null. Plotting it would read as free.",
+    });
+  }
+
+  // theme toggle — unset → light → dark → unset
+  document.getElementById("theme").addEventListener("click", () => {
+    const r = document.documentElement;
+    r.dataset.theme = r.dataset.theme === "light" ? "dark" : r.dataset.theme === "dark" ? "" : "light";
+    if (!r.dataset.theme) r.removeAttribute("data-theme");
+  });
+})();
+</script>
+</body>
+</html>
