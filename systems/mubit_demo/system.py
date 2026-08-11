@@ -303,6 +303,11 @@ class MubitDemoSystem(MubitMemorySystem):
         self._emitter = _make_emitter()
         self._arm = _detect_arm()
         self._emitter_id = uuid.uuid4().hex[:12]
+        # Stamped on every event so the collector can reject anything from a
+        # different run. Worker processes outlive a killed parent, and an
+        # orphan from a previous run posting into the current collector is
+        # indistinguishable from real data without this.
+        self._run_group = os.environ.get("MUBIT_DEMO_RUN_GROUP") or None
         self._instance_index: Optional[int] = None
         self._instance_id: Optional[str] = None
         self._turn: int = 0
@@ -350,6 +355,7 @@ class MubitDemoSystem(MubitMemorySystem):
                 {
                     "type": kind,
                     "arm": self._arm,
+                    "run_group": self._run_group,
                     "emitter": self._emitter_id,
                     "pid": os.getpid(),
                     "mubit_run_id": self._run_id,

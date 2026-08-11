@@ -150,14 +150,28 @@ than guessing.
 
 ## Install
 
-`demo/install.py` copies three things into the CL-Bench checkout, all as files
+`demo/install.py` copies four things into the CL-Bench checkout, all as files
 CL-Bench itself does not own:
 
 ```
 systems/mubit/                 → $CLBENCH/src/systems/mubit/
 systems/mubit_demo/            → $CLBENCH/src/systems/mubit_demo/
 demo/schedules/demo_drift.json → $CLBENCH/src/tasks/database_exploration/schedules/
+demo/variants/demo_drift.json  → $CLBENCH/src/tasks/database_exploration/variants/
 ```
+
+**Both the schedule and the variant are required, and the variant is the one
+that matters.** A drift run's length and its migration point come from the
+*variant*, not the schedule: `task.py:195` overwrites `num_questions` with the
+variant's default, and `:211-214` reads `pre_drift_count`/`post_drift_count`
+from the variant's config. A schedule's per-stage `num_questions` is decorative
+for a drift variant — a `demo_drift` schedule alone still runs the stock
+`schema_drift` variant's **40** questions with the migration at 20. That is a
+silent 2× on time and cost with the drift in the wrong place, and it is only
+visible in one line of harness output (`Starting 1 run(s) + N-instance
+baseline`). `demo/variants/demo_drift.json` sets 20 / 10 / 10 against the same
+databases, question pools, seed and query budget, so the run is a genuine
+prefix subset of the measured configuration rather than a different task.
 
 `systems/mubit` is synced deliberately. A checkout can be carrying an older
 generation of that file; the version in this repo is the one whose constructor

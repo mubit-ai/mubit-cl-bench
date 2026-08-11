@@ -449,14 +449,50 @@ def resolve_replay(value: str) -> Path:
     return path
 
 
-def serve_pages(recording: Optional[Path], live_dir: Optional[Path], port: int):
+def serve_pages(
+    recording: Optional[Path],
+    live_dir: Optional[Path],
+    port: int,
+    run_group: Optional[str] = None,
+):
     server, hub, _ = collector_mod.serve(
         root=REPO,
         recording=recording or (RECORDINGS / "scratch.jsonl"),
         live_dir=live_dir,
         port=port,
+        run_group=run_group,
     )
     return server, hub
+
+
+def terminate_group(proc: subprocess.Popen) -> None:
+    """Kill the benchmark and everything it spawned.
+
+    ``clbench`` runs its instances in a ProcessPoolExecutor, and those workers
+    are spawned with their own command lines — killing or pkill-ing the parent
+    leaves them reparented to init, still running the OLD configuration and
+    still posting events. Observed directly: orphans from an interrupted
+    40-question run contaminated the next 20-question recording, and the only
+    visible symptom was two different totals in the prompts.
+
+    The child is started with ``start_new_session=True`` so it leads its own
+    process group; signalling the group takes the workers with it.
+    """
+    if proc.poll() is not None:
+        return
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+    except (ProcessLookupError, PermissionError, OSError):
+        proc.terminate()
+    try:
+        proc.wait(timeout=15)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        proc.kill()
 
 
 def main() -> int:
@@ -550,7 +586,7 @@ def main() -> int:
         mubit_proc, endpoint, temp_data = start_mubit(ctx, args.mubit_port, args.keep_mubit_data)
 
         head("Collector")
-        server, hub = serve_pages(recording, live_dir, port)
+        server, hub = serve_pages(recording, live_dir, port, run_group=run_group_id)
         say(f"http://127.0.0.1:{port}  recording → {recording.name}", "ok")
 
         reference = build_reference()
@@ -583,6 +619,7 @@ def main() -> int:
         env.update(
             {
                 "MUBIT_DEMO_COLLECTOR": f"http://127.0.0.1:{port}",
+                "MUBIT_DEMO_RUN_GROUP": run_group_id,
                 "MUBIT_DEMO_DRIFT_INDEX": str(drift_index if drift_index is not None else 10**9),
                 "MUBIT_ENDPOINT": endpoint,
             }
@@ -592,12 +629,17 @@ def main() -> int:
                 env[key] = ctx["env_file"][key]
 
         started = time.time()
-        proc = subprocess.Popen(cmd, cwd=clbench, env=env)
+        proc = subprocess.Popen(cmd, cwd=clbench, env=env, start_new_session=True)
         try:
             rc = proc.wait()
         except KeyboardInterrupt:
-            proc.terminate()
-            rc = proc.wait()
+            say("interrupted — stopping the benchmark and its workers", "warn")
+            terminate_group(proc)
+            rc = proc.returncode if proc.returncode is not None else 130
+        finally:
+            # Even on a clean exit: a worker that outlives its parent would
+            # keep posting into whatever collector comes next.
+            terminate_group(proc)
         elapsed = time.time() - started
         say(f"clbench exited rc={rc} after {elapsed / 60:.1f} min", "ok" if rc == 0 else "bad")
 

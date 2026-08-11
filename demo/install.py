@@ -79,12 +79,23 @@ def install(clbench: Path, dry_run: bool = False) -> int:
     changes = _copy_tree(REPO / "systems" / "mubit", src_root / "systems" / "mubit", dry_run)
     changes += _copy_tree(REPO / "systems" / "mubit_demo", src_root / "systems" / "mubit_demo", dry_run)
 
-    schedule_src = REPO / "demo" / "schedules" / "demo_drift.json"
-    schedule_dst = schedule_dir / "demo_drift.json"
-    if not (schedule_dst.exists() and filecmp.cmp(schedule_src, schedule_dst, shallow=False)):
-        changes.append(f"{'update' if schedule_dst.exists() else 'create'} {schedule_dst}")
+    variant_dir = src_root / "tasks" / "database_exploration" / "variants"
+    if not variant_dir.is_dir():
+        print(f"error: {variant_dir} not found", file=sys.stderr)
+        return 2
+
+    # The variant carries the question count and the drift boundary; the
+    # schedule is the two-stage shape. Both are needed — a schedule alone
+    # cannot shorten a drift run (see demo/variants/demo_drift.json).
+    for src, dst in (
+        (REPO / "demo" / "schedules" / "demo_drift.json", schedule_dir / "demo_drift.json"),
+        (REPO / "demo" / "variants" / "demo_drift.json", variant_dir / "demo_drift.json"),
+    ):
+        if dst.exists() and filecmp.cmp(src, dst, shallow=False):
+            continue
+        changes.append(f"{'update' if dst.exists() else 'create'} {dst}")
         if not dry_run:
-            shutil.copy2(schedule_src, schedule_dst)
+            shutil.copy2(src, dst)
 
     if not changes:
         print(f"already up to date in {clbench}")

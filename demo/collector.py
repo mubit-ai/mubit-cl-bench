@@ -48,7 +48,7 @@ _SNAPSHOT_POLL_SECONDS = 1.0
 class Hub:
     """Sequenced event log with SSE fan-out."""
 
-    def __init__(self, recording_path: Path) -> None:
+    def __init__(self, recording_path: Path, run_group: Optional[str] = None) -> None:
         self.recording_path = recording_path
         self.recording_path.parent.mkdir(parents=True, exist_ok=True)
         self._fh = self.recording_path.open("a", encoding="utf-8")
@@ -56,6 +56,13 @@ class Hub:
         self._history: list[dict] = []
         self._subscribers: list[queue.Queue] = []
         self._gseq = 0
+        # Events tagged with a different run are refused. A killed benchmark
+        # leaves worker processes reparented to init — they keep running the
+        # OLD configuration and keep posting, and their events are otherwise
+        # indistinguishable from the current run's. Observed in practice: a
+        # 40-question orphan contaminated a 20-question recording.
+        self.expected_group = run_group
+        self.rejected = 0
 
     def publish(self, event: dict) -> dict:
         with self._lock:
@@ -238,7 +245,21 @@ class Handler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(f"bad event: {exc}".encode())
             return
-        type(self).hub.publish(event)
+        hub = type(self).hub
+        group = event.get("run_group")
+        if hub.expected_group and group and group != hub.expected_group:
+            hub.rejected += 1
+            if hub.rejected in (1, 10, 100):
+                print(
+                    f"collector: refused {hub.rejected} event(s) from run '{group}' "
+                    f"(this collector serves '{hub.expected_group}') — "
+                    "an orphaned worker from an earlier run is still alive",
+                    flush=True,
+                )
+            self.send_response(409)
+            self.end_headers()
+            return
+        hub.publish(event)
         self.send_response(204)
         self.end_headers()
 
@@ -302,8 +323,9 @@ def serve(
     live_dir: Optional[Path],
     host: str = "127.0.0.1",
     port: int = 8799,
+    run_group: Optional[str] = None,
 ) -> tuple[ThreadingHTTPServer, Hub, Optional[SnapshotWatcher]]:
-    hub = Hub(recording)
+    hub = Hub(recording, run_group=run_group)
     handler = type("BoundHandler", (Handler,), {"hub": hub, "root": root})
     server = ThreadingHTTPServer((host, port), handler)
     server.daemon_threads = True
@@ -322,6 +344,7 @@ def main() -> None:
     ap.add_argument("--live-dir", default=None)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8799)
+    ap.add_argument("--run-group", default=None)
     args = ap.parse_args()
 
     server, hub, _ = serve(
@@ -330,6 +353,7 @@ def main() -> None:
         live_dir=Path(args.live_dir) if args.live_dir else None,
         host=args.host,
         port=args.port,
+        run_group=args.run_group,
     )
     print(f"collector on http://{args.host}:{args.port}  recording={args.recording}")
     try:
