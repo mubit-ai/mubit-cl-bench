@@ -108,8 +108,11 @@
       scans: v4base.scans, band: SP[V4].band, rowH: 5,
       note: "This is the control, and it is the comparison that matters: the geometry never resolves. " +
             "Recovered from baseline_trace.instance_traces[i].result.metrics.scan_results[0] — 90 " +
-            "single-scan sub-traces stitched by scan_idx. The data report states baseline metrics are " +
-            "empty; that is true of baseline_trace.result.metrics, but the per-instance traces do carry them.",
+            "single-scan sub-traces. Note scan_idx is 0 on every one of them (each sub-trace knows only " +
+            "its own scan), so it cannot be used to order them; the ordering is instance_traces order, " +
+            "which extract.py verifies elementwise against baseline_reward_by_index rather than assuming. " +
+            "The data report states baseline metrics are empty; that is true of " +
+            "baseline_trace.result.metrics, but the per-instance traces do carry them.",
     });
   }
 
@@ -212,6 +215,14 @@
           { name: "Stateless (r_sl)", color: "--sys-baseline", value: A[aid].r_sl },
         ],
       })),
+      // Stateful is drawn in each adapter's own hue, so the derived legend
+      // would name only v1's. State all four explicitly.
+      legend: [
+        { name: "v1 stateful", color: COLOR[V1] },
+        { name: "v2 stateful", color: COLOR[V2] },
+        { name: "v4 stateful", color: COLOR[V4] },
+        { name: "Stateless control (r_sl)", color: "--sys-baseline" },
+      ],
       note: "Read the blue-family bars left to right: 0.310 → 0.638 → 0.647. The real system improvement " +
             "happened between v1 and v2. Now read the violet bars: 0.220 → 0.470 → 0.237. v4's headline " +
             "is that violet bar falling, not the coloured bar rising.",

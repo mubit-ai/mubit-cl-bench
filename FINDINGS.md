@@ -13,7 +13,7 @@ treated as claims to test, never as sources. No benchmark was re-run.
 
 ## 0. Verification gate
 
-**130 checks re-derived from the artifacts. 128 pass, 2 mismatch.**
+**142 checks re-derived from the artifacts. 140 pass, 2 mismatch.**
 
 Every claim in DEMO_DATA_REPORT.md §1, §5, §6, §7 and §11.1/§11.7 reproduces within
 the report's own displayed precision. That matters mainly because §7 is a list of
@@ -83,9 +83,50 @@ shows stateful *beside* stateless — which is what turns §7.1 from an assertio
 something visible: the stateless band never resolves, across all 90 scans. It is the
 single best asset produced by this pass.
 
-Note for poker: the baseline resets every hand, so each sub-trace's `total_profit`
-covers that one hand only. It must be re-cumulated to be comparable to a run's
-curve. `extract.py` does this and exposes it as `cumulative_profit`.
+**Two traps, both of which silently produce a plausible-looking wrong chart:**
+
+1. **There is no usable ordering key.** Each sub-trace only knows its own instance,
+   so `scan_idx` is `0` on all 90 spectrum entries and `hand_num` is `1` on all 120
+   poker entries. Sorting by them is a no-op that happens to preserve list order by
+   stable-sort accident, and plotting against them collapses every point onto one x
+   value. The real ordering is `instance_traces` order — `extract.py` now verifies it
+   elementwise against `baseline_reward_by_index` instead of assuming it.
+2. **Poker `total_profit` is per-hand, not cumulative.** The baseline resets every
+   hand, so each sub-trace's `total_profit` equals its own `profit`. It must be
+   re-cumulated; `extract.py` exposes that as `cumulative_profit`.
+
+Cross-checked independently: the recovered poker curve agrees with
+`baseline_reward_by_index × 10` to the chip at every one of 120 hands, endpoints
+included (463 chips for v5, 360 for full). Two extraction paths, identical answer.
+
+### 2.5 Database reward is query-efficiency weighted, not accuracy — and that explains the whole task
+
+Derived from the artifacts and verified elementwise across all five DB artifacts:
+
+```
+reward = correct ? (max_queries_per_question − num_queries) / max_queries_per_question : 0
+```
+
+with `max_queries_per_question = 15`. A wrong answer scores 0 regardless of effort.
+**A correct answer that used the full budget also scores 0.**
+
+This is not in the report, and it dissolves the "accuracy and gain point in opposite
+directions" puzzle (report §11.6) into arithmetic:
+
+| Artifact | Accuracy | Mean queries | Predicted r_sf | Actual r_sf |
+|---|---|---|---|---|
+| `mubit-db-3` | 0.3167 | 6.85 | 0.317 × (15−6.85)/15 = **0.172** | 0.180 |
+| `mubit-genai-db-full-3.5flash` | 0.7167 | 13.62 | 0.717 × (15−13.62)/15 = **0.066** | 0.070 |
+
+The `mubit_genai` artifacts aren't scoring badly because they learn badly. They score
+badly because they spend 13.6 of a 15-query budget, and the reward function charges
+them for it. Their own stateless baseline does nearly as well for the same reason,
+which is why their normalized gain collapses to 1.1%.
+
+**Ruling:** any demo that shows accuracy must also say what the benchmark actually
+rewards, or the two numbers look contradictory when they are the same number seen
+twice. This is also the honest answer to "why is Mubit's gain only 13.7% when its
+accuracy is 65% better than ICL's."
 
 ### 2.2 On Database Exploration, accuracy separates at n=3 — normalized gain does not
 
@@ -147,9 +188,9 @@ Same task, same seed, same 40 instances, same model, 3 runs each.
 - **Cannot claim:** a normalized-gain win (13.7% vs 11.4% — the per-run scores
   overlap), or a 2× token reduction.
 - **Must disclose:** the two `mubit_genai` artifacts reach the best accuracy in the
-  repo (66.7% and 71.7%) at nearly the worst gain (1.9%, 1.1%), because they spend
-  13.5 of a 15-query budget so the stateless baseline nearly matches them. Accuracy
-  and gain point in opposite directions here; pick one and say why.
+  repo (66.7% and 71.7%) at nearly the worst gain (1.9%, 1.1%). Per §2.5 this is not
+  a contradiction — the reward function charges for queries used, and they spend 13.5
+  of a 15-query budget. State the reward definition alongside any accuracy number.
 
 ### Blind Spectrum Monitoring — the best visual, the worst provenance
 

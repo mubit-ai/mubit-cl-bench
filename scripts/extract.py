@@ -170,6 +170,7 @@ def derive(task: str, artifact_id: str, d: dict) -> dict:
             "mean_raw_metric_by_index": agg.get("mean_raw_metric_by_index") or [],
         },
         "raw_metric_name": agg.get("raw_metric_name"),
+        "task_params": summary.get("task", {}).get("params", {}),
         "runs": runs,
         "metrics": metrics,
         "usage": {"runs": run_usage, "baseline": baseline_usage,
@@ -252,12 +253,16 @@ def extract_bsm(d: dict) -> dict:
         })
 
     bt = d.get("baseline_trace") or {}
+    # NB: scan_idx is 0 on every baseline sub-trace (each knows only its own
+    # scan), so it cannot order these. instance_traces order is the ordering;
+    # verify() checks it elementwise against baseline_reward_by_index.
     b_scans = []
-    for itr in bt.get("instance_traces") or []:
+    for i, itr in enumerate(bt.get("instance_traces") or []):
         m = (itr.get("result") or {}).get("metrics") or {}
         for sr in (m.get("scan_results") or []):
-            b_scans.append(scan_record(sr))
-    b_scans.sort(key=lambda s: (s["scan_idx"] if s["scan_idx"] is not None else 0))
+            rec = scan_record(sr)
+            rec["scan_idx"] = i
+            b_scans.append(rec)
     b_reg, b_peaks = [], []
     for it in bt.get("interactions") or []:
         md = (it.get("response") or {}).get("metadata") or {}
@@ -330,12 +335,21 @@ def baseline_per_instance(bt: dict, list_key: str, fields: list[str]) -> list:
     `baseline_trace.result.metrics` is empty in every artifact, but each
     `instance_traces[i]` carries its own single-instance metrics block. This is
     the only way to get the stateless run's per-instance detail.
+
+    ORDERING: the natural-looking sort keys are useless here. Each sub-trace
+    only knows about its own instance, so `scan_idx` is 0 on all 90 BSM entries
+    and `hand_num` is 1 on all 120 poker entries. Sorting by them is a no-op
+    that merely preserves list order by stable-sort accident. The real ordering
+    is `instance_traces` order itself, which `verify()` checks elementwise
+    against `baseline_reward_by_index` rather than assuming.
     """
     out = []
-    for itr in bt.get("instance_traces") or []:
+    for i, itr in enumerate(bt.get("instance_traces") or []):
         m = (itr.get("result") or {}).get("metrics") or {}
         for rec in (m.get(list_key) or []):
-            out.append({f: rec.get(f) for f in fields})
+            row = {f: rec.get(f) for f in fields}
+            row["instance_index"] = i
+            out.append(row)
     return out
 
 
@@ -402,7 +416,8 @@ def extract_poker(d: dict) -> dict:
     bt = d.get("baseline_trace") or {}
     bhh = baseline_per_instance(bt, "hand_history",
                                 ["hand_num", "profit", "total_profit", "variant_id"])
-    bhh.sort(key=lambda h: h.get("hand_num") or 0)
+    # hand_num is 1 on every entry — do NOT sort or plot against it. Order is
+    # instance_traces order, checked in verify().
     # The baseline resets every hand, so each sub-trace reports total_profit for
     # its own hand alone. Re-cumulate so the curve is comparable to a run's.
     running = 0
@@ -673,6 +688,34 @@ def verify(derived: dict, bsm: dict, db: dict, poker: dict) -> Checks:
           all(len((v.get("baseline") or {}).get("hands") or []) > 0 for v in poker.values()))
     c.add("new", "DB baseline per-question outcomes recoverable", True,
           all(len((v.get("baseline") or {}).get("outcomes") or []) > 0 for v in db.values()))
+
+    # ---- and that the recovered order is REAL, not a stable-sort accident ---
+    # Each sub-trace reports scan_idx=0 / hand_num=1, so instance_traces order
+    # is the only ordering available. Check it elementwise against the
+    # independently-aggregated baseline_reward_by_index.
+    for aid, v in bsm.items():
+        got = [s["score"] for s in v["baseline"]["scans"]]
+        want = derived[aid]["series"]["baseline_reward_by_index"]
+        c.add("new", f"{aid} baseline order matches reward series", 0,
+              max((abs(a - b) for a, b in zip(got, want)), default=None), tol=1e-6)
+    for aid, v in poker.items():
+        got = [(h["profit"] or 0) / 10.0 for h in v["baseline"]["hands"]]
+        want = derived[aid]["series"]["baseline_reward_by_index"]
+        if got:
+            c.add("new", f"{aid} baseline order matches reward series", 0,
+                  max((abs(a - b) for a, b in zip(got, want)), default=None), tol=1e-6)
+    # DB reward is NOT binary correctness — it is query-efficiency weighted.
+    # Checking the recovered outcomes against the derived formula verifies the
+    # ordering AND the reward definition in one pass.
+    for aid, v in db.items():
+        B = derived[aid]["task_params"].get("max_queries_per_question")
+        outs = v["baseline"]["outcomes"]
+        want = derived[aid]["series"]["baseline_reward_by_index"]
+        if not (outs and B):
+            continue
+        got = [((B - o["num_queries"]) / B) if o["correct"] else 0.0 for o in outs]
+        c.add("new", f"{aid} baseline reward == correct?(B-q)/B:0", 0,
+              max((abs(a - b) for a, b in zip(got, want)), default=None), tol=1e-3)
 
     # ---- §11.7 cost is unusable on 3.5-flash ------------------------------
     bad = [a["id"] for a in derived.values()

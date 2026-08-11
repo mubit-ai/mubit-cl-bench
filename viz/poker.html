@@ -234,15 +234,38 @@
   var v5runs = DT[V5].runs;
   var v5cum = v5runs.map(function (r) { return r.hands.map(function (h) { return h.total_profit; }); });
 
-  // detail[].baseline.hands is EMPTY for every artifact in this dataset, so the
-  // stateless cumulative trace is rebuilt from the measured per-hand stateless
-  // reward: series.baseline_reward_by_index[i] * 10 chips, cumulated. This is
-  // the same measured quantity in the same unit — nothing is imputed.
-  var baseCum = [], acc = 0;
-  A[V5].series.baseline_reward_by_index.forEach(function (v, i) {
-    acc += v * BB;
-    baseCum.push([i + 1, acc]);
+  // Real per-hand stateless record, recovered from the baseline's per-instance
+  // sub-traces. NOTE: every entry carries hand_num === 1 (each sub-trace covers
+  // exactly one hand and its own total_profit spans only that hand), so the x
+  // position is the array index, never hand_num, and the cumulative channel is
+  // cumulative_profit — never total_profit.
+  var baseHands = DT[V5].baseline.hands;
+  var baseCum = baseHands.map(function (h, i) { return [i + 1, h.cumulative_profit]; });
+
+  // Corroboration: the same quantity also reaches us through the reward channel
+  // (series.baseline_reward_by_index, in big blinds). Two independent extraction
+  // paths — if they ever disagree the page says so instead of picking one.
+  var reconCum = [], acc = 0;
+  A[V5].series.baseline_reward_by_index.forEach(function (v) { reconCum.push((acc += v * BB)); });
+  var cumDiffs = baseCum.map(function (p, i) { return p[1] - reconCum[i]; });
+  var maxCumDiff = Math.max.apply(null, cumDiffs.map(Math.abs));
+  var profitAgrees = baseHands.every(function (h, i) {
+    return Math.abs(h.profit - A[V5].series.baseline_reward_by_index[i] * BB) < 1e-9;
   });
+  var baseAgrees = maxCumDiff < 1e-9 && profitAgrees;
+
+  // The baseline carries its own variant_id per hand — check it against the
+  // stateful schedule rather than assuming they line up.
+  var baseSegs = segmentsOf(baseHands.map(function (h, i) {
+    return { hand_num: i + 1, variant_id: h.variant_id };
+  }));
+  var baseSegsAgree = sig(baseSegs) === segSig;
+
+  // How much of the whole session's profit lands inside the first regime.
+  var r1End = segs[0].to;
+  var r1Pcts = v5cum.map(function (c) { return (c[r1End - 1] / c[c.length - 1]) * 100; });
+  var r1Share = Math.round(Math.min.apply(null, r1Pcts)) + "–" + Math.round(Math.max.apply(null, r1Pcts)) + "%";
+  var baseShare = Math.round((baseCum[r1End - 1][1] / baseCum[baseCum.length - 1][1]) * 100) + "%";
 
   V.lines(s2, {
     title: "Cumulative profit across the opponent schedule — " + V5,
@@ -267,7 +290,7 @@
         band: envelope(v5cum)
       },
       {
-        id: "baseline", name: "Stateless control (cumulated per-hand reward)", color: BASE, dash: true,
+        id: "baseline", name: "Stateless control (measured per-hand record)", color: BASE, dash: true,
         values: baseCum
       }
     ],
@@ -277,11 +300,21 @@
       "Settles: the stateful curve tracks the stateless one closely and ends BELOW it (" +
       v5cum[0][v5cum[0].length - 1] + " chips for run 0 vs " + Math.round(baseCum[baseCum.length - 1][1]) + " for the stateless control); " +
       "there is no visible inflection at any regime switch, which is what an adapting agent would produce. " +
-      "Both 120-hand artifacts lose most of their edge in the loose_aggressive stretch (hands 21–50) and never recover it. " +
-      "Data caveat: detail[\"" + V5 + "\"].baseline.hands is an empty array in this dataset, so no per-hand baseline profit trace exists. " +
-      "The dashed line is rebuilt from the measured series.baseline_reward_by_index (big blinds won per hand) × 10 chips/bb, cumulated — " +
-      "reward_by_index[i] === hands[i].profit / 10 holds exactly for every run, so this is the same measured quantity, not an estimate. " +
-      "Raw per-hand values; no smoothing anywhere on this page."
+      "The sharpest thing in this chart is that " + r1Share + " of the whole 120-hand profit is booked inside the FIRST regime " +
+      "(hands " + segs[0].from + "–" + segs[0].to + " vs " + segs[0].variant + "); after hand " + segs[0].to +
+      " every stateful run is flat or falling, and the stateless control books " + baseShare + " of its total in the same stretch. " +
+      "Neither arm learns to beat the archetypes that arrive later — the profit is front-loaded against the easiest opponent, not earned by adaptation. " +
+      "The dashed line is real measured data, not a reconstruction: it is the stateless control's own per-hand record, recovered from the " +
+      "baseline's " + baseHands.length + " per-instance sub-traces (each sub-trace holds one hand). Two details of that record matter and are handled here — " +
+      "every entry reports hand_num 1, because a sub-trace only knows about its own hand, so hand position comes from the stitch order; and each entry's " +
+      "total_profit likewise covers a single hand, so the curve plots cumulative_profit and never total_profit. " +
+      (baseAgrees
+        ? "Cross-check: this recovered record agrees to the chip with the independent reward channel (series.baseline_reward_by_index × 10) at all " +
+          baseHands.length + " hands, ending at " + baseCum[baseCum.length - 1][1] + " chips either way — two extraction paths, one number."
+        : "<b>Cross-check FAILED:</b> the recovered record disagrees with series.baseline_reward_by_index by up to " + maxCumDiff +
+          " chips. Both are plotted-from measurements that should be identical; treat this curve as unresolved.") +
+      (baseSegsAgree ? "" : " <b>Note: the baseline's own variant_id schedule differs from the stateful one</b>, so the shaded bands describe the stateful arm only.") +
+      " Raw per-hand values; no smoothing anywhere on this page."
   });
 
   // ==================================================================== 3 ==
@@ -308,6 +341,9 @@
   FULL.forEach(function (id) {
     var a = A[id];
     var runRewards = a.runs.map(function (r) { return r.reward_by_index; });
+    var allR = runRewards.reduce(function (x, y) { return x.concat(y); }, [])
+      .concat(a.series.baseline_reward_by_index);
+    var rLo = Math.min.apply(null, allR), rHi = Math.max.apply(null, allR);
     V.lines(s3, {
       title: "Per-hand reward — " + id,
       subtitle: "Mean of the 3 stateful runs (envelope = run min/max) against this artifact's own stateless control. Raw values, no moving average.",
@@ -328,8 +364,8 @@
         }
       ],
       note:
-        "Shows: every hand's outcome, unsmoothed, for both arms. Poker reward is heavy-tailed — a handful of hands in the " +
-        "−11 to +24 bb range carry the whole session, which is exactly why 5 hands cannot decide anything. " +
+        "Shows: every hand's outcome, unsmoothed, for both arms. Poker reward is heavy-tailed — single hands run from " +
+        sgn(rLo, 1) + " to " + sgn(rHi, 1) + " bb here, so a handful of pots carry the whole session, which is exactly why 5 hands cannot decide anything. " +
         "Settles: the mean of the stateful series is " + a.r_sf.toFixed(3) + " bb/hand and the mean of the stateless series is " +
         a.r_sl.toFixed(3) + " bb/hand — the stateless line is the higher of the two, and that gap IS the negative g_b. " +
         "The envelope shows the 3 stateful runs disagree hand-by-hand far more than the arms differ on average. " +
@@ -385,10 +421,18 @@
     "later regimes, where it has seen more play. This is the per-regime mean reward for both arms, using the boundaries derived in section 2."
   );
 
+  // Stateless side now comes straight from the recovered per-hand record: group
+  // baseline hands by their OWN variant_id and average profit, converted to
+  // bb/hand so both arms share the unit used everywhere else on this page.
+  function baselineRegimeMean(id, seg) {
+    var hs = DT[id].baseline.hands.filter(function (h, i) { return i + 1 >= seg.from && i + 1 <= seg.to; });
+    return mean(hs.map(function (h) { return h.profit / BB; }));
+  }
+
   var regimeGroups = segs.map(function (s) {
     var i0 = s.from - 1, i1 = s.to;
     var sf = mean(A[V5].series.mean_reward_by_index.slice(i0, i1));
-    var sl = mean(A[V5].series.baseline_reward_by_index.slice(i0, i1));
+    var sl = baselineRegimeMean(V5, s);
     return {
       label: s.variant,
       sublabel: "hands " + s.from + "–" + s.to + " (n=" + (i1 - i0) + ")",
@@ -401,10 +445,25 @@
   });
 
   var wins = regimeGroups.filter(function (g) { return g._sf > g._sl; }).length;
+  var firstReg = regimeGroups[0];
+  var lastReg = regimeGroups[regimeGroups.length - 1];
+
+  // Same per-regime split for the sister artifact, derived rather than quoted.
+  var fuReg = segs.map(function (s) {
+    var sf = mean(A[FU].series.mean_reward_by_index.slice(s.from - 1, s.to));
+    var sl = baselineRegimeMean(FU, s);
+    return { seg: s, sf: sf, sl: sl, d: sf - sl };
+  });
+  var fuAhead = fuReg.filter(function (r) { return r.d > 0; });
+  var fuAheadText = fuAhead.length
+    ? "only in " + fuAhead.map(function (r) {
+        return r.seg.variant + " (hands " + r.seg.from + "–" + r.seg.to + ", " + sgn(r.d, 3) + " bb/hand)";
+      }).join(" and ") + " and behind in the other " + (fuReg.length - fuAhead.length)
+    : "in none of the " + fuReg.length + " regimes";
 
   V.bars(s5, {
     title: "Mean reward per opponent regime — " + V5,
-    subtitle: "Mean of mean_reward_by_index (stateful, 3 runs) and baseline_reward_by_index (stateless) inside each derived regime.",
+    subtitle: "Stateful = mean of mean_reward_by_index across 3 runs. Stateless = the control's own per-hand profits, grouped by the variant_id each hand was actually played against.",
     width: 940,
     height: 340,
     y: { label: "Mean reward (bb/hand)", format: function (v) { return V.fmt(v, 2); } },
@@ -412,12 +471,16 @@
     note:
       "Shows: whether the stateful arm ever converts experience into an edge inside a specific opponent archetype. " +
       "Settles: it does not. The stateful arm is ahead in " + wins + " of " + regimeGroups.length + " regimes, and its largest deficit is in " +
-      "the very first regime (calling_station, hands 1–20, " + sgn(regimeGroups[0]._sf - regimeGroups[0]._sl, 3) + " bb/hand) — " +
+      "the very first regime (" + firstReg.label + ", hands " + segs[0].from + "–" + segs[0].to + ", " + sgn(firstReg._sf - firstReg._sl, 3) + " bb/hand) — " +
       "the regime where a memory system has the least to remember and should be closest to parity. " +
-      "In the final regime (loose_aggressive, hands 96–120) the two arms are indistinguishable at " + regimeGroups[4]._sf.toFixed(3) + " bb/hand each. " +
-      "The sister artifact mubit-poker-full is ahead of its own control only in fit_or_fold (hands 61–95, +0.133 bb/hand) and behind in the other four. " +
+      "In the final regime (" + lastReg.label + ", hands " + segs[segs.length - 1].from + "–" + segs[segs.length - 1].to + ") the two arms are " +
+      "indistinguishable at " + lastReg._sf.toFixed(3) + " and " + lastReg._sl.toFixed(3) + " bb/hand. " +
+      "The sister artifact " + FU + " is ahead of its own control " + fuAheadText + ". " +
       "No regime shows the ramp-inside-a-regime shape that adaptation would produce. " +
-      "Note: the stateless bars use the reserved baseline hue but cannot be drawn dashed — the shared bar mark has no dash channel — so they are named explicitly in the legend."
+      "The stateless bars are computed from the control's recovered per-hand record (hands[].profit ÷ 10 bb, grouped by that hand's own variant_id), " +
+      "so each pair compares the two arms over exactly the same stretch of the same opponent" +
+      (baseSegsAgree ? " — the baseline's variant_id schedule was checked against the stateful one and is identical." : ", but note the two schedules differ.") +
+      " Note: the stateless bars use the reserved baseline hue but cannot be drawn dashed — the shared bar mark has no dash channel — so they are named explicitly in the legend."
   });
 
   // ==================================================================== 6 ==
@@ -447,6 +510,10 @@
   });
   var gapHands = nullIdx[V5].map(function (i) { return i + 1; });
 
+  var quickLat = QUICK.reduce(function (acc2, id) {
+    return acc2.concat(A[id].series.mean_latency_by_index.filter(function (v) { return v != null; }));
+  }, []);
+
   V.lines(s6, {
     title: "Mean latency per hand — the two 120-hand artifacts",
     subtitle: "Mean across the 3 runs at each hand index. The break at hand " + gapHands.join(", ") + " is a real missing value, drawn as a gap.",
@@ -468,7 +535,8 @@
       "series.mean_latency_by_index carries exactly one null, at index " + nullIdx[V5].join(", ") + " (hand " + gapHands.join(", ") + "), on BOTH artifacts — " +
       "the same index is also null in series.mean_cost_by_index. It is rendered as a break in the line: not interpolated, not dropped silently, and marked with a rule. " +
       "No min/max envelope here: only the run-mean latency series exists per hand, so there is no measured per-run spread to draw. " +
-      "The quick_test artifacts are 3–8× slower per hand (17–47 s) but on gemini-2.5-flash with reasoning tokens, a different comparability band, so they are not overlaid."
+      "The quick_test artifacts span " + Math.min.apply(null, quickLat).toFixed(1) + "–" + Math.max.apply(null, quickLat).toFixed(1) +
+      " s per hand, mostly far slower than either line here, but they run on gemini-2.5-flash with reasoning tokens in a different comparability band, so they are not overlaid."
   });
 
   // ------------------------------------------------------------- closing ---
