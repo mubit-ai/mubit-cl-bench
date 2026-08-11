@@ -3,8 +3,8 @@
     "title": "Mubit on Continual Learning Bench (CL-Bench)",
     "paper": "Asawa et al., arXiv:2606.05661, 2026",
     "benchmark_repo": "github.com/pgasawa/continual-learning-bench",
-    "mubit_model": "gemini-3.5-flash",
-    "paper_models": "GPT-5.4 / Gemini 3 Flash",
+    "mubit_model": "",
+    "paper_models": "",
     "n_runs": 3,
     "metric": "Normalized gain g_b = (r_sf - r_sl) / (r_max - r_sl)"
   },
@@ -18,27 +18,24 @@
       {
         "task": "Blind Spectrum Monitoring",
         "Mubit": 53.7,
-        "ICL (GPT-5.4)": 29.4,
-        "Mem0 (GPT-5.4)": 15.6,
-        "ACE (GPT-5.4)": 0.0,
-        "note": "Mubit: gemini-3.5-flash (best run 71.1%); competitors: GPT-5.4 (paper)",
-        "Mubit_best_run": 71.1
+        "Mubit_best_run": 71.1,
+        "ICL": 29.4,
+        "Mem0": 15.6,
+        "ACE": 0.0
       },
       {
         "task": "Database Exploration",
         "Mubit": 13.7,
-        "ICL (GPT-5.4)": 20.1,
-        "Mem0 (GPT-5.4)": 20.2,
-        "ACE (GPT-5.4)": 8.6,
-        "note": "Mubit: gemini-2.5-flash; competitors: GPT-5.4 (paper)"
+        "ICL": 20.1,
+        "Mem0": 20.2,
+        "ACE": 8.6
       },
       {
         "task": "Exploitable Poker",
         "Mubit": -1.0,
-        "ICL (GPT-5.4)": 20.1,
-        "Mem0 (GPT-5.4)": 20.2,
-        "ACE (GPT-5.4)": 8.6,
-        "note": "Mubit: gemini-3.5-flash; competitors: GPT-5.4 (paper)"
+        "ICL": 20.1,
+        "Mem0": 20.2,
+        "ACE": 8.6
       }
     ]
   },

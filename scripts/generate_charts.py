@@ -55,7 +55,7 @@ def chart_1_gain_comparison():
     """Grouped bar: normalized gain across tasks and systems."""
     d = DATA["chart_1_normalized_gain_comparison"]
     tasks = [row["task"] for row in d["data"]]
-    systems = ["Mubit", "ICL (GPT-5.4)", "Mem0 (GPT-5.4)", "ACE (GPT-5.4)"]
+    systems = ["Mubit", "ICL", "Mem0", "ACE"]
     colors = [COLORS["mubit"], COLORS["icl"], COLORS["mem0"], COLORS["ace"]]
 
     x = np.arange(len(tasks))
