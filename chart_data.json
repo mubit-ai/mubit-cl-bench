@@ -33,7 +33,7 @@
       },
       {
         "task": "Exploitable Poker",
-        "Mubit": -1.0,
+        "Mubit": -5.9,
         "ICL": 20.1,
         "Mem0": 20.2,
         "ACE": 8.6
@@ -523,8 +523,12 @@
       "key_advantage": "Mubit's semantic lessons survive schema renames; Mem0's extracted facts break"
     },
     "poker": {
-      "mubit_gain": -1.0,
-      "verdict": "Memory hurts \u2014 cards are independent per hand"
+      "mubit_gain": -5.9,
+      "v5_gain": -8.9,
+      "v6_improvement": "+3.0pp",
+      "positive_hands_v5": 27,
+      "positive_hands_v6": 40,
+      "verdict": "Strategy lessons improved positive-hand rate by 48%, but poker remains high-variance"
     }
   },
   "chart_7_mubit_vs_mem0_drift": {

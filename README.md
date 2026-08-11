@@ -94,9 +94,14 @@ Measured empirically: **97.3% token reduction** on BSM (5.5M tokens saved), **92
 
 ## Honest Limitations
 
-### Exploitable Poker: −1.0% gain (memory hurts)
+### Exploitable Poker: −5.9% gain
 
-Poker hands are independent — cards are dealt randomly each hand. There is genuinely nothing useful to "remember" across hands. Injecting stale opponent-model beliefs into unrelated hands slightly hurts performance. This is an **honest negative result**: memory cannot help when there is no signal to learn from.
+Poker is a high-variance game where cards are dealt randomly each hand. Mubit's strategy-aware lessons (distilled with hand-strength classification: "fold trash regardless of opponent tendencies", "value-bet strong hands") improved the positive-hand rate by 48% (27→40 positive hands out of 120), but the overall gain remains slightly negative because:
+
+1. **The stateless baseline plays tight, disciplined fold-poker** — and that's genuinely +EV against a random opponent. Memory makes the agent play more hands, increasing variance.
+2. **High variance across runs**: Run 3 showed +14.4% gain, Run 1 showed −6.6%. The mean is noise-dominated at this sample size.
+
+The strategy lessons are directionally correct — they now say "Do NOT expand calling range — weak hands still lose. Fold trash preflop regardless of opponent tendencies" instead of the old raw observations that encouraged loose play. The improvement from V5 (−8.9%) to V6 (−5.9%) shows the lesson quality matters, but the fundamental challenge remains.
 
 ---
 
