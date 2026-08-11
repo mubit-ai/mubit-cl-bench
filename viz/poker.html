@@ -1,0 +1,486 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Exploitable Poker — CL-Bench instrument</title>
+<link rel="stylesheet" href="style.css"></head><body>
+<header class="top"><h1>CL-Bench instrument</h1>
+<nav><a href="index.html">Overview</a><a href="bsm.html">Spectrum</a>
+<a href="db.html">Database</a><a href="poker.html" aria-current="page">Poker</a>
+<button id="theme">Theme</button></nav></header>
+<main id="main"></main>
+<script src="../viz_data/poker.js"></script><script src="chart.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var D = window.VIZ_POKER;
+  var A = D.artifacts, DT = D.detail;
+  var main = document.getElementById("main");
+
+  // ------------------------------------------------------------- theme ----
+  var CYCLE = [null, "light", "dark"];
+  document.getElementById("theme").addEventListener("click", function () {
+    var cur = document.documentElement.dataset.theme || null;
+    var nxt = CYCLE[(CYCLE.indexOf(cur) + 1) % CYCLE.length];
+    if (nxt) document.documentElement.dataset.theme = nxt;
+    else delete document.documentElement.dataset.theme;
+  });
+
+  // ------------------------------------------------------------ identity --
+  // Fixed hue per system. Never per rank — filtering must not repaint anyone.
+  var COLOR = {
+    "icl-quick-3": "--sys-icl",
+    "mubit-quick-3": "--sys-mubit",
+    "mubit-poker-v5-3.5flash": "--sys-mubit-genai",
+    "mubit-poker-full-3.5flash": "--sys-mubit-full"
+  };
+  var BASE = "--sys-baseline";
+
+  var QUICK = ["icl-quick-3", "mubit-quick-3"];
+  var FULL = ["mubit-poker-v5-3.5flash", "mubit-poker-full-3.5flash"];
+  var ORDER = QUICK.concat(FULL);
+
+  var NAME = {
+    "icl-quick-3": "ICL",
+    "mubit-quick-3": "Mubit",
+    "mubit-poker-v5-3.5flash": "Mubit v5",
+    "mubit-poker-full-3.5flash": "Mubit full"
+  };
+
+  function band(id) {
+    var a = A[id];
+    return a.n_instances + " hands · " + a.model;
+  }
+
+  // ------------------------------------------------------------ helpers ----
+  function el(tag, cls, html) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (html != null) n.innerHTML = html;
+    return n;
+  }
+  function section(heading, ledeHtml) {
+    var s = el("section", "act");
+    s.appendChild(el("h2", null, heading));
+    if (ledeHtml) s.appendChild(el("p", "lede", ledeHtml));
+    main.appendChild(s);
+    return s;
+  }
+  function flag(parent, cls, html) {
+    parent.appendChild(el("div", "flag" + (cls ? " " + cls : ""), html));
+  }
+  function tiles(parent, items) {
+    var box = el("div", "tiles");
+    items.forEach(function (t) {
+      var d = el("div", "tile");
+      d.appendChild(el("div", "lbl", t.lbl));
+      d.appendChild(el("div", "val", t.val));
+      if (t.sub) d.appendChild(el("div", "sub", t.sub));
+      box.appendChild(d);
+    });
+    parent.appendChild(box);
+  }
+  function sgn(v, digits) {
+    if (v == null) return "—";
+    return (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(digits == null ? 3 : digits);
+  }
+  function sgnPct(v, digits) {
+    if (v == null) return "—";
+    return (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(digits == null ? 1 : digits) + "%";
+  }
+  function mean(vals) {
+    var v = vals.filter(function (x) { return x != null; });
+    if (!v.length) return null;
+    return v.reduce(function (a, b) { return a + b; }, 0) / v.length;
+  }
+
+  // Min/max envelope across the 3 runs of a per-index array — the honest n=3
+  // spread. Never a bar with an error bar.
+  function envelope(arrays) {
+    var n = arrays[0].length, out = [];
+    for (var i = 0; i < n; i++) {
+      var lo = Infinity, hi = -Infinity, any = false;
+      for (var j = 0; j < arrays.length; j++) {
+        var v = arrays[j][i];
+        if (v == null || Number.isNaN(v)) continue;
+        any = true;
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+      }
+      out.push(any ? [i + 1, lo, hi] : [i + 1, null, null]);
+    }
+    return out;
+  }
+  function asXY(arr, scale) {
+    return arr.map(function (v, i) {
+      return [i + 1, v == null ? null : v * (scale == null ? 1 : scale)];
+    });
+  }
+
+  // Opponent regimes are DERIVED, never hardcoded: scan hands[].variant_id for
+  // changes and take the run of equal ids as one regime.
+  function segmentsOf(hands) {
+    var out = [];
+    hands.forEach(function (h) {
+      var last = out[out.length - 1];
+      if (!last || last.variant !== h.variant_id) {
+        out.push({ variant: h.variant_id, from: h.hand_num, to: h.hand_num });
+      } else last.to = h.hand_num;
+    });
+    return out;
+  }
+  function sig(segs) {
+    return segs.map(function (s) { return s.variant + ":" + s.from + "-" + s.to; }).join("|");
+  }
+
+  var SHORT = {
+    calling_station: "calling stn",
+    loose_aggressive: "loose-agg",
+    fit_or_fold: "fit/fold"
+  };
+
+  // ============================================================== derive ===
+  var V5 = "mubit-poker-v5-3.5flash", FU = "mubit-poker-full-3.5flash";
+  var segs = segmentsOf(DT[V5].runs[0].hands);
+  var segSig = sig(segs);
+
+  // Verify the regime schedule really is shared before saying so on the page.
+  var segsAgree = true;
+  FULL.forEach(function (id) {
+    DT[id].runs.forEach(function (r) { if (sig(segmentsOf(r.hands)) !== segSig) segsAgree = false; });
+  });
+
+  var segText = segs.map(function (s) {
+    return "<code>" + s.variant + "</code> " + s.from + "–" + s.to;
+  }).join(", ");
+
+  var boundaries = segs.slice(1).map(function (s) { return s.from; });
+  var xTicks = [1].concat(boundaries).concat([segs[segs.length - 1].to]);
+
+  // A big blind is 10 chips: reward_by_index[i] === hands[i].profit / 10 holds
+  // exactly for every run of every artifact (checked against the source JSON).
+  var BB = 10;
+
+  // ==================================================================== 1 ==
+  var s1 = section(
+    "1 · The contradiction",
+    "Exploitable Poker is the one CL-Bench task that returns two opposite answers depending only on how long you let it run. " +
+    "At <b>5 hands</b> memory looks like it helps. At <b>120 hands</b> — 24× more evidence, and the schedule the task was designed for — it does not. " +
+    "Both numbers are on the chart below. This page does not pick one and quietly drop the other."
+  );
+
+  flag(s1, "",
+    "<b>The honest reading: memory does not help on poker.</b> Every measurement taken on the schedule the task was built for " +
+    "(<code>default</code>, 120 hands) is <b>negative</b>: " + sgnPct(A[V5].g_b) + " and " + sgnPct(A[FU].g_b) + ". " +
+    "The <b>" + sgnPct(A["mubit-quick-3"].g_b) + "</b> headline comes from <code>quick_test</code>: 5 hands × 3 runs = 15 hands total, on a different model. " +
+    "15 hands of no-limit hold'em is inside the noise of a single big pot — it cannot support a claim in either direction. " +
+    "The two bands are not comparable, so neither number refutes the other; the 5-hand number is simply not evidence."
+  );
+
+  tiles(s1, [
+    { lbl: "mubit-quick-3 · g_b", val: sgnPct(A["mubit-quick-3"].g_b), sub: band("mubit-quick-3") + " · " + A["mubit-quick-3"].n_runs + " runs" },
+    { lbl: "icl-quick-3 · g_b", val: sgnPct(A["icl-quick-3"].g_b), sub: band("icl-quick-3") + " · " + A["icl-quick-3"].n_runs + " runs" },
+    { lbl: "mubit-poker-v5 · g_b", val: sgnPct(A[V5].g_b), sub: band(V5) + " · " + A[V5].n_runs + " runs" },
+    { lbl: "mubit-poker-full · g_b", val: sgnPct(A[FU].g_b), sub: band(FU) + " · " + A[FU].n_runs + " runs" }
+  ]);
+
+  V.bars(s1, {
+    title: "Normalized gain g_b — both comparability bands, one axis",
+    subtitle: "Bar height is the stored g_b. The vertical rule is a comparability wall: 5-hand / 2.5-flash on the left, 120-hand / 3.5-flash on the right. Every system gets a slot in both bands; the dashed boxes are runs that do not exist.",
+    width: 940,
+    height: 330,
+    y: { label: "g_b (normalized gain)", format: function (v) { return V.pct(v, 1); } },
+    dividers: [0],
+    // Grouped by comparability band, one bar slot per system in BOTH bands, so
+    // every empty slot is a true statement about a run that does not exist —
+    // and the table view stays honest instead of becoming a diagonal.
+    groups: [
+      {
+        label: "quick_test",
+        sublabel: A["mubit-quick-3"].n_instances + " hands · " + A["mubit-quick-3"].model,
+        bars: ORDER.map(function (id) {
+          return { name: NAME[id], color: COLOR[id], value: QUICK.indexOf(id) >= 0 ? A[id].g_b : null };
+        })
+      },
+      {
+        label: "default",
+        sublabel: A[V5].n_instances + " hands · " + A[V5].model,
+        bars: ORDER.map(function (id) {
+          return { name: NAME[id], color: COLOR[id], value: FULL.indexOf(id) >= 0 ? A[id].g_b : null };
+        })
+      }
+    ],
+    note:
+      "Shows: the only four poker artifacts in the repo, on the single axis where the contradiction is visible. " +
+      "ICL = icl-quick-3, Mubit = mubit-quick-3, Mubit v5 = " + V5 + ", Mubit full = " + FU + ". " +
+      "g_b = (r_sf − r_sl) / (r_max − r_sl) — headroom-normalized gain, reproduced exactly (to the last bit) from the stored r_sf / r_sl / r_max for all four artifacts. " +
+      "r_max = " + A[V5].r_max + " bb for every poker artifact. " +
+      "Settles: the sign of the poker result is decided by n, not by the system. The divider marks two comparability keys — " +
+      "exploitable_poker|quick_test|gemini/gemini-2.5-flash and exploitable_poker|default|gemini-3.5-flash — and nothing may be read across it. " +
+      "The four dashed boxes are real absences, not styling: no system was measured in BOTH bands, which is exactly why the contradiction cannot be resolved from this data. " +
+      "In particular ICL was never run on the 120-hand schedule, so poker has no stateless-competitor counterpart there. " +
+      "Those slots are left empty rather than filled with a borrowed or imputed number."
+  });
+
+  // ==================================================================== 2 ==
+  var s2 = section(
+    "2 · Opponent-regime drift",
+    "The poker environment swaps opponent archetype mid-session. The boundaries below were derived by scanning " +
+    "<code>hands[].variant_id</code> for changes — not hardcoded. " + segs.length + " regimes found: " + segText + "." +
+    (segsAgree
+      ? " The same schedule holds for all three runs of both 120-hand artifacts, so the drift is a property of the environment, not of a run."
+      : " <b>Warning: the regime schedule is NOT identical across runs</b> — the bands below describe run 0 only.")
+  );
+
+  var v5runs = DT[V5].runs;
+  var v5cum = v5runs.map(function (r) { return r.hands.map(function (h) { return h.total_profit; }); });
+
+  // detail[].baseline.hands is EMPTY for every artifact in this dataset, so the
+  // stateless cumulative trace is rebuilt from the measured per-hand stateless
+  // reward: series.baseline_reward_by_index[i] * 10 chips, cumulated. This is
+  // the same measured quantity in the same unit — nothing is imputed.
+  var baseCum = [], acc = 0;
+  A[V5].series.baseline_reward_by_index.forEach(function (v, i) {
+    acc += v * BB;
+    baseCum.push([i + 1, acc]);
+  });
+
+  V.lines(s2, {
+    title: "Cumulative profit across the opponent schedule — " + V5,
+    subtitle: "Run 0 stateful, with the min/max envelope of all three runs. Shaded stripes are the derived opponent regimes.",
+    width: 940,
+    height: 400,
+    x: { label: "Hand", ticks: xTicks, domain: [1, segs[segs.length - 1].to], format: function (v) { return String(Math.round(v)); } },
+    y: { label: "Cumulative profit (chips)" },
+    xBands: segs.map(function (s, i) {
+      return {
+        from: s.from, to: s.to,
+        label: SHORT[s.variant] || s.variant,
+        // alternate so adjacent regimes never merge into one wash
+        color: i % 2 === 0 ? "--band" : "--surface"
+      };
+    }),
+    xRules: boundaries.map(function (b) { return { at: b }; }),
+    series: [
+      {
+        id: V5, name: V5 + " · run 0 (stateful)", color: COLOR[V5],
+        values: v5cum[0].map(function (v, i) { return [i + 1, v]; }),
+        band: envelope(v5cum)
+      },
+      {
+        id: "baseline", name: "Stateless control (cumulated per-hand reward)", color: BASE, dash: true,
+        values: baseCum
+      }
+    ],
+    note:
+      "Shows: where the money actually moves, against the opponent archetype in force at that hand. " +
+      "Regime boundaries are derived from the data (changes in hands[].variant_id), at hands " + boundaries.join(", ") + ". " +
+      "Settles: the stateful curve tracks the stateless one closely and ends BELOW it (" +
+      v5cum[0][v5cum[0].length - 1] + " chips for run 0 vs " + Math.round(baseCum[baseCum.length - 1][1]) + " for the stateless control); " +
+      "there is no visible inflection at any regime switch, which is what an adapting agent would produce. " +
+      "Both 120-hand artifacts lose most of their edge in the loose_aggressive stretch (hands 21–50) and never recover it. " +
+      "Data caveat: detail[\"" + V5 + "\"].baseline.hands is an empty array in this dataset, so no per-hand baseline profit trace exists. " +
+      "The dashed line is rebuilt from the measured series.baseline_reward_by_index (big blinds won per hand) × 10 chips/bb, cumulated — " +
+      "reward_by_index[i] === hands[i].profit / 10 holds exactly for every run, so this is the same measured quantity, not an estimate. " +
+      "Raw per-hand values; no smoothing anywhere on this page."
+  });
+
+  // ==================================================================== 3 ==
+  var s3 = section(
+    "3 · Stateful vs stateless, hand by hand",
+    "A negative g_b is not an abstraction — it means the stateless control simply won more per hand. " +
+    "These are the raw per-hand rewards behind the two 120-hand numbers, with the min/max envelope of the three stateful runs."
+  );
+
+  flag(s3, "warn",
+    "<b>Stateless sits ABOVE stateful on both 120-hand artifacts.</b> " +
+    V5 + ": r_sf " + A[V5].r_sf.toFixed(3) + " vs r_sl " + A[V5].r_sl.toFixed(3) + " bb/hand (" + sgn(A[V5].r_sf - A[V5].r_sl) + "). " +
+    FU + ": r_sf " + A[FU].r_sf.toFixed(3) + " vs r_sl " + A[FU].r_sl.toFixed(3) + " bb/hand (" + sgn(A[FU].r_sf - A[FU].r_sl) + "). " +
+    "Both systems are profitable in absolute terms — they just make less money than the same model with no memory at all."
+  );
+
+  tiles(s3, [
+    { lbl: "r_sf · stateful (v5)", val: A[V5].r_sf.toFixed(3), sub: "bb/hand, mean of 3 runs × 120 hands" },
+    { lbl: "r_sl · stateless (v5)", val: A[V5].r_sl.toFixed(3), sub: "bb/hand, control run" },
+    { lbl: "r_sf · stateful (full)", val: A[FU].r_sf.toFixed(3), sub: "bb/hand, mean of 3 runs × 120 hands" },
+    { lbl: "r_sl · stateless (full)", val: A[FU].r_sl.toFixed(3), sub: "bb/hand, control run" }
+  ]);
+
+  FULL.forEach(function (id) {
+    var a = A[id];
+    var runRewards = a.runs.map(function (r) { return r.reward_by_index; });
+    V.lines(s3, {
+      title: "Per-hand reward — " + id,
+      subtitle: "Mean of the 3 stateful runs (envelope = run min/max) against this artifact's own stateless control. Raw values, no moving average.",
+      width: 940,
+      height: 340,
+      x: { label: "Hand", ticks: xTicks, domain: [1, a.n_instances], format: function (v) { return String(Math.round(v)); } },
+      y: { label: "Reward (big blinds won)" },
+      xRules: boundaries.map(function (b) { return { at: b }; }),
+      series: [
+        {
+          id: id, name: id + " · stateful (mean of 3)", color: COLOR[id],
+          values: asXY(a.series.mean_reward_by_index),
+          band: envelope(runRewards)
+        },
+        {
+          id: id + "-base", name: "Stateless control", color: BASE, dash: true,
+          values: asXY(a.series.baseline_reward_by_index)
+        }
+      ],
+      note:
+        "Shows: every hand's outcome, unsmoothed, for both arms. Poker reward is heavy-tailed — a handful of hands in the " +
+        "−11 to +24 bb range carry the whole session, which is exactly why 5 hands cannot decide anything. " +
+        "Settles: the mean of the stateful series is " + a.r_sf.toFixed(3) + " bb/hand and the mean of the stateless series is " +
+        a.r_sl.toFixed(3) + " bb/hand — the stateless line is the higher of the two, and that gap IS the negative g_b. " +
+        "The envelope shows the 3 stateful runs disagree hand-by-hand far more than the arms differ on average. " +
+        "Each artifact carries its own stateless control (the two baseline series are not identical), so they are plotted separately rather than sharing one baseline. " +
+        "Vertical rules mark the derived opponent-regime boundaries from section 2."
+    });
+  });
+
+  // ==================================================================== 4 ==
+  var s4 = section(
+    "4 · Per-run consistency",
+    "Three runs per artifact. With n=3 the honest form is all three points plus the mean — never a bar with an error bar. " +
+    "The x axis is <code>runs[i].score</code>, which for this task is big blinds won per hand."
+  );
+
+  flag(s4, "",
+    "<b>5 hands × 3 runs cannot support a claim.</b> The quick_test per-run <code>total_gain</code> values are " +
+    A["mubit-quick-3"].runs.map(function (r) { return sgn(r.total_gain, 2); }).join(" / ") + " for mubit-quick-3 and " +
+    A["icl-quick-3"].runs.map(function (r) { return sgn(r.total_gain, 2); }).join(" / ") + " for icl-quick-3 — " +
+    "differences of a few big blinds over 15 hands in total. A single flopped set swings more than that. " +
+    "The 120-hand rows below are 360 hands per artifact and still show run-to-run spread wider than the stateful–stateless gap they are supposed to measure."
+  );
+
+  V.dots(s4, {
+    title: "Per-run score — all four artifacts",
+    subtitle: "Unit is bb/hand for every row, but the top two rows are a different schedule AND a different model from the bottom two. Read within a band only.",
+    width: 940,
+    x: { label: "Run score (big blinds per hand)", format: function (v) { return V.fmt(v, 3); } },
+    rows: QUICK.concat(FULL).map(function (id) {
+      return {
+        label: id,
+        sublabel: band(id),
+        color: COLOR[id],
+        values: A[id].runs.map(function (r) { return r.score; })
+      };
+    }),
+    note:
+      "Shows: run-level dispersion, which the single g_b number in section 1 hides. " +
+      "Settles: at 5 hands the scores are quantised onto a handful of values (a hand is worth ±0.5, ±1, ±2 bb and up), so " +
+      "\"consistency\" there is an artifact of the tiny sample. At 120 hands mubit-poker-full spans " +
+      Math.min.apply(null, A[FU].runs.map(function (r) { return r.score; })).toFixed(3) + " to " +
+      Math.max.apply(null, A[FU].runs.map(function (r) { return r.score; })).toFixed(3) +
+      " bb/hand — a spread of " +
+      (Math.max.apply(null, A[FU].runs.map(function (r) { return r.score; })) - Math.min.apply(null, A[FU].runs.map(function (r) { return r.score; }))).toFixed(3) +
+      " bb/hand, larger than its " + Math.abs(A[FU].r_sf - A[FU].r_sl).toFixed(3) + " bb/hand deficit to its own stateless control. " +
+      "The measured effect is smaller than the noise it sits in. There is no divider on a dot plot, so the schedule and model are carried on every row label instead."
+  });
+
+  // ==================================================================== 5 ==
+  var s5 = section(
+    "5 · Does adaptation happen when the opponent switches?",
+    "If memory were working, the stateful arm should pull ahead inside a regime as it learns that opponent — and especially in the " +
+    "later regimes, where it has seen more play. This is the per-regime mean reward for both arms, using the boundaries derived in section 2."
+  );
+
+  var regimeGroups = segs.map(function (s) {
+    var i0 = s.from - 1, i1 = s.to;
+    var sf = mean(A[V5].series.mean_reward_by_index.slice(i0, i1));
+    var sl = mean(A[V5].series.baseline_reward_by_index.slice(i0, i1));
+    return {
+      label: s.variant,
+      sublabel: "hands " + s.from + "–" + s.to + " (n=" + (i1 - i0) + ")",
+      _sf: sf, _sl: sl,
+      bars: [
+        { name: V5 + " · stateful", color: COLOR[V5], value: sf, label: sf.toFixed(2) },
+        { name: "Stateless control", color: BASE, value: sl, label: sl.toFixed(2) }
+      ]
+    };
+  });
+
+  var wins = regimeGroups.filter(function (g) { return g._sf > g._sl; }).length;
+
+  V.bars(s5, {
+    title: "Mean reward per opponent regime — " + V5,
+    subtitle: "Mean of mean_reward_by_index (stateful, 3 runs) and baseline_reward_by_index (stateless) inside each derived regime.",
+    width: 940,
+    height: 340,
+    y: { label: "Mean reward (bb/hand)", format: function (v) { return V.fmt(v, 2); } },
+    groups: regimeGroups,
+    note:
+      "Shows: whether the stateful arm ever converts experience into an edge inside a specific opponent archetype. " +
+      "Settles: it does not. The stateful arm is ahead in " + wins + " of " + regimeGroups.length + " regimes, and its largest deficit is in " +
+      "the very first regime (calling_station, hands 1–20, " + sgn(regimeGroups[0]._sf - regimeGroups[0]._sl, 3) + " bb/hand) — " +
+      "the regime where a memory system has the least to remember and should be closest to parity. " +
+      "In the final regime (loose_aggressive, hands 96–120) the two arms are indistinguishable at " + regimeGroups[4]._sf.toFixed(3) + " bb/hand each. " +
+      "The sister artifact mubit-poker-full is ahead of its own control only in fit_or_fold (hands 61–95, +0.133 bb/hand) and behind in the other four. " +
+      "No regime shows the ramp-inside-a-regime shape that adaptation would produce. " +
+      "Note: the stateless bars use the reserved baseline hue but cannot be drawn dashed — the shared bar mark has no dash channel — so they are named explicitly in the legend."
+  });
+
+  // ==================================================================== 6 ==
+  var s6 = section(
+    "6 · Latency, and the missing cost channel",
+    "What the extra machinery costs in wall time. There is no cost chart on this page, and that is a finding rather than an omission."
+  );
+
+  var costDead = FULL.filter(function (id) { return A[id].usage.cost_reliable === false; });
+  flag(s6, "warn",
+    "<b>Cost is unmeasured on every 3.5-flash artifact.</b> " + costDead.join(" and ") +
+    " both report <code>usage.cost_reliable: false</code>, every run's <code>cost_usd</code> is literally <code>0</code>, and " +
+    "<code>series.mean_cost_by_index</code> is 0 at every index except one null. Zero here means \"no price was attached to this model\", " +
+    "not \"this was free\", so plotting it would draw a flat free line that is simply false. No cost chart is shown. " +
+    "The two quick_test artifacts DO have reliable cost (cost_reliable: true, e.g. mubit-quick-3 at $" +
+    mean(A["mubit-quick-3"].usage.runs.map(function (r) { return r.cost_usd; })).toFixed(4) + "/run) but they are 5 hands on a different model and cannot stand in."
+  );
+
+  var latMeans = {};
+  FULL.forEach(function (id) { latMeans[id] = mean(A[id].series.mean_latency_by_index); });
+
+  var nullIdx = {};
+  FULL.forEach(function (id) {
+    nullIdx[id] = A[id].series.mean_latency_by_index
+      .map(function (v, i) { return v == null ? i : -1; })
+      .filter(function (i) { return i >= 0; });
+  });
+  var gapHands = nullIdx[V5].map(function (i) { return i + 1; });
+
+  V.lines(s6, {
+    title: "Mean latency per hand — the two 120-hand artifacts",
+    subtitle: "Mean across the 3 runs at each hand index. The break at hand " + gapHands.join(", ") + " is a real missing value, drawn as a gap.",
+    width: 940,
+    height: 340,
+    x: { label: "Hand", ticks: xTicks, domain: [1, 120], format: function (v) { return String(Math.round(v)); } },
+    y: { label: "Latency (seconds)", format: function (v) { return V.fmt(v, 1); } },
+    xRules: gapHands.map(function (hn) { return { at: hn, label: "hand " + hn + " · not recorded" }; }),
+    series: FULL.map(function (id) {
+      return {
+        id: id, name: id, color: COLOR[id],
+        values: asXY(A[id].series.mean_latency_by_index)
+      };
+    }),
+    note:
+      "Shows: per-hand latency for both 120-hand artifacts, raw. " +
+      "Settles: mubit-poker-v5 averages " + latMeans[V5].toFixed(2) + " s/hand against mubit-poker-full's " + latMeans[FU].toFixed(2) +
+      " s/hand — v5 is the cheaper of the two in time while also being the less negative of the two in gain, but both are negative. " +
+      "series.mean_latency_by_index carries exactly one null, at index " + nullIdx[V5].join(", ") + " (hand " + gapHands.join(", ") + "), on BOTH artifacts — " +
+      "the same index is also null in series.mean_cost_by_index. It is rendered as a break in the line: not interpolated, not dropped silently, and marked with a rule. " +
+      "No min/max envelope here: only the run-mean latency series exists per hand, so there is no measured per-run spread to draw. " +
+      "The quick_test artifacts are 3–8× slower per hand (17–47 s) but on gemini-2.5-flash with reasoning tokens, a different comparability band, so they are not overlaid."
+  });
+
+  // ------------------------------------------------------------- closing ---
+  var s7 = section("What this page settles");
+  flag(s7, "",
+    "<b>Poker is a negative result, and the instrument should say so.</b> Across " + (A[V5].n_runs * A[V5].n_instances) +
+    " stateful hands per 120-hand artifact, memory produced " + sgnPct(A[V5].g_b) + " and " + sgnPct(A[FU].g_b) +
+    " normalized gain — the stateless control won more per hand in both cases, in 4 of 5 opponent regimes, with run-to-run spread " +
+    "wider than the effect itself. The " + sgnPct(A["mubit-quick-3"].g_b) + " that appears in the aggregate is a 15-hand result on a different model " +
+    "and belongs to a comparability band of its own. Nothing here says memory cannot help at poker; it says these runs do not show it helping, " +
+    "and that no ICL counterpart was ever run at 120 hands to compare against."
+  );
+})();
+</script>
+</body></html>
