@@ -136,9 +136,16 @@
     }
     const g = D.gain();
     const total = cfg.questions != null ? cfg.questions : 20;
-    host.appendChild(
-      tile("Run", cfg.run_group_id || "—", `${cfg.system || "—"} · ${cfg.model || "—"}`)
-    );
+    // The run id is a timestamp, not a headline — it wraps to three lines at
+    // hero size and dwarfs the numbers that matter.
+    const runTile = tile("Run", cfg.run_group_id || "—", `${cfg.system || "—"} · ${cfg.model || "—"}`);
+    const v = runTile.querySelector(".val");
+    if (v) {
+      v.style.fontSize = "15px";
+      v.style.fontWeight = "500";
+      v.style.wordBreak = "break-all";
+    }
+    host.appendChild(runTile);
     host.appendChild(
       tile(
         "Memory ON",

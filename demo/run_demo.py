@@ -435,18 +435,48 @@ def verify(recording: Path, artifact: Optional[Path], expected_questions: int = 
 # ---------------------------------------------------------------------------
 
 
+def hold(server=None, hub=None) -> None:
+    """Block until Ctrl-C, keeping the pages served.
+
+    Not ``signal.pause()``: that returns as soon as ANY handled signal
+    arrives, and tearing down Mubit and the benchmark's process group
+    immediately beforehand generates exactly such signals — so the process
+    printed "pages stay up" and then exited. ``time.sleep`` retries across
+    interruptions since PEP 475, so this only ends on KeyboardInterrupt.
+    """
+    try:
+        while True:
+            time.sleep(3600)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if server is not None:
+            server.shutdown()
+        if hub is not None:
+            hub.close()
+
+
 def resolve_replay(value: str) -> Path:
     if value.upper() == "LATEST":
         files = sorted(RECORDINGS.glob("*.jsonl"), key=lambda p: p.stat().st_mtime)
         if not files:
             raise Fail(f"no recordings in {RECORDINGS}")
         return files[-1]
-    path = Path(value)
-    if not path.is_absolute():
-        path = REPO / path
-    if not path.exists():
-        raise Fail(f"recording not found: {path}")
-    return path
+    # A bare filename means a recording; the "replay it" hint printed at the
+    # end of a run is exactly that, so it has to resolve here or the hint is
+    # a command that does not work.
+    for candidate in (Path(value), RECORDINGS / value, REPO / value):
+        if candidate.is_absolute() and candidate.exists():
+            return candidate
+        if not candidate.is_absolute() and (REPO / candidate).exists():
+            return REPO / candidate
+        if candidate.exists():
+            return candidate
+    raise Fail(
+        f"recording not found: {value}\n"
+        f"  looked in {RECORDINGS} and {REPO}\n"
+        f"  available: {', '.join(p.name for p in sorted(RECORDINGS.glob('*.jsonl'))) or 'none'}"
+    )
 
 
 def serve_pages(
@@ -534,7 +564,7 @@ def main() -> int:
             say(f"recording {recording.name} ({recording.stat().st_size // 1024} KB)", "ok")
             print(f"\n    {url}\n")
             print("    Ctrl-C to stop.", flush=True)
-            signal.pause()
+            hold()
             return 0
 
         ctx = preflight(clbench, Path(args.ricedb).expanduser().resolve())
@@ -665,13 +695,11 @@ def main() -> int:
             f"\n    Pages stay up at http://127.0.0.1:{port}/demo/web/index.html — Ctrl-C to stop.\n",
             flush=True,
         )
-        if not args.no_hold:
-            try:
-                signal.pause()
-            except KeyboardInterrupt:
-                pass
-        server.shutdown()
-        hub.close()
+        if args.no_hold:
+            server.shutdown()
+            hub.close()
+        else:
+            hold(server, hub)
         return 0 if (rc == 0 and ok) else 1
 
     except Fail as exc:

@@ -217,8 +217,43 @@ scores exactly zero regardless of effort.
 HTTP/1.1. The index drops its own stream when tiling for this reason; opening
 more than four framed pages at once will starve them.
 
-## Cost
+## Cost and duration, measured
 
-The 2-question smoke cost **$0.016** across 16 model calls. A full demo run is
-roughly 380 calls across both arms — expect well under a dollar at
-`gemini-2.5-flash` rates. `clbench` prints the exact figure at the end.
+First full run, `demo-20260811-205341`:
+
+| | |
+|---|---|
+| wall clock | **13.0 min** |
+| model spend | **$0.47** — 216 calls, 809,852 tokens |
+| verification | **PASS** — 20 of 20 paired, 4.33% shown vs 4.33% in the artifact |
+
+The 2-question smoke cost $0.016 across 16 calls.
+
+### What that run actually produced
+
+Worth reading before you present, because it is the case the reference bands
+were put there for:
+
+| | memory ON | memory OFF |
+|---|---|---|
+| correct | 2 / 20 | 0 / 20 |
+| mean reward | 0.0433 | 0.0 |
+| normalized gain | **4.33%** | — |
+
+Positive, and memory beat no-memory — but 4.33% sits in the **lower tail** of
+the bootstrap band (p05 2.1%, p25 9.3%, median 14.2%), and it is the ~11%
+outcome predicted before the run. Both arms failed most questions outright:
+these are `difficulty: hard`, and a wrong answer scores exactly zero no matter
+how efficiently it was reached, so all 20 memory-OFF questions score 0.000 and
+the entire gain comes from questions 16 and 20.
+
+One further signal, stated with its confound: mean queries per question fell
+from **11.7 pre-migration to 7.9 post-migration**, a 32% drop. That is the shape
+learning would have — but the post-migration questions come from a *different
+pool* (`questions_post_drift.json`), so the drop cannot be attributed to
+learning rather than to those questions being shorter. Do not present it as
+adaptation without a control for question difficulty.
+
+If a 10 + 10 run keeps landing this thin, the honest fix is a longer schedule —
+`--task.schedule default` runs the measured 20 + 20 with twice the room to
+accumulate — not repeated 10 + 10 runs until a good one appears.
