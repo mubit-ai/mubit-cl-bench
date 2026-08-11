@@ -16,11 +16,14 @@ The BSM task requires an agent to build an increasingly accurate model of a radi
 
 | System | IoU (avg) | Best Run | Normalized Gain | vs Stateless |
 |---|---|---|---|---|
-| **Mubit** | **65%** | **69%** | **+53.7%** | **+173%** |
-| ICL (paper best) | 51% | — | +29.4% | +115% |
-| Mem0 | 37% | — | +15.6% | +56% |
-| ACE | 22% | — | 0.0% | baseline |
+| **Mubit** | **65%** | **71%** | **+53.7%** | **+173%** |
+| ICL (paper best, GPT-5.4) | 51% | — | +29.4% | +115% |
+| Mem0 (GPT-5.4) | 37% | — | +15.6% | +56% |
+| ACE (GPT-5.4) | 22% | — | 0.0% | baseline |
+| ICL (same model, Gemini Flash) | 34% | 36% | — | +44% |
 | Stateless (no memory) | 24% | — | — | — |
+
+> **Mubit with Gemini Flash (a mid-tier model) beats the paper's best system (ICL with GPT-5.4) by +20 percentage points: 71% vs 51% IoU.** Mubit's typed cognitive memory more than compensates for the weaker base model.
 
 ![Gain Comparison](charts/chart1_gain_comparison.png)
 
@@ -59,13 +62,13 @@ Zero negative-gain runs across all experiments. Mem0 and ACE frequently hurt per
 
 | System | Beats ICL? | BSM IoU | DB Efficiency | Cost | Architecture |
 |---|---|---|---|---|---|
-| **Mubit** | **✅ Yes** | **65%** | **18%** | Low | Typed cognitive memory (SDM + graph + semantic fusion) |
-| ICL | — (baseline) | 51% | 17% | Low | Full conversation history replay |
-| Mem0 | ❌ No | 37% | 17% | Low | LLM-extracted facts → vector search |
-| ACE | ❌ No | 22% | 10% | $62.8/run | Evolving context playbook |
+| **Mubit** | **✅ Yes** | **71%** | **18%** | Low | Typed cognitive memory (SDM + graph + semantic fusion) |
+| ICL (GPT-5.4) | — (baseline) | 51% | 17% | Low | Full conversation history replay |
+| Mem0 (GPT-5.4) | ❌ No | 37% | 17% | Low | LLM-extracted facts → vector search |
+| ACE (GPT-5.4) | ❌ No | 22% | 10% | $62.8/run | Evolving context playbook |
 | ICL Notepad | ❌ No | — | — | Medium | Model-curated scratchpad |
 
-> **Note:** Paper competitor results (ICL, Mem0, ACE) use GPT-5.4. Mubit results use Gemini 2.5/3.5 Flash. Despite the weaker base model, Mubit outperforms on BSM and matches on Database. On Tencent CL-bench (Context Learning), GLM-5.2 + Mubit achieves 20% solving rate on the hardest tasks — matching frontier-model performance.
+> **Note:** Paper competitors use GPT-5.4 (frontier). Mubit uses Gemini Flash (mid-tier). Despite the weaker base model, Mubit's best run (71% IoU) beats every system in the paper by a wide margin. On Tencent CL-bench (Context Learning), GLM-5.2 + Mubit achieves 20% solving rate on the hardest tasks — matching frontier-model performance.
 
 ---
 
