@@ -317,7 +317,25 @@ def extract_db(d: dict) -> dict:
         })
 
     bt = d.get("baseline_trace") or {}
-    out["baseline"] = {"steps": step_series(bt)}
+    out["baseline"] = {"steps": step_series(bt),
+                       "outcomes": baseline_per_instance(bt, "question_history", [
+                           "correct", "num_queries", "num_actions", "regret",
+                           "submitted_answer", "timed_out", "budget_exceeded"])}
+    return out
+
+
+def baseline_per_instance(bt: dict, list_key: str, fields: list[str]) -> list:
+    """Rebuild the baseline's per-instance record.
+
+    `baseline_trace.result.metrics` is empty in every artifact, but each
+    `instance_traces[i]` carries its own single-instance metrics block. This is
+    the only way to get the stateless run's per-instance detail.
+    """
+    out = []
+    for itr in bt.get("instance_traces") or []:
+        m = (itr.get("result") or {}).get("metrics") or {}
+        for rec in (m.get(list_key) or []):
+            out.append({f: rec.get(f) for f in fields})
     return out
 
 
@@ -382,17 +400,16 @@ def extract_poker(d: dict) -> dict:
             "variant_id": m.get("variant_id"),
         })
     bt = d.get("baseline_trace") or {}
-    bm = (bt.get("result") or {}).get("metrics") or {}
-    bhh = bm.get("hand_history") or []
-    out["baseline"] = {
-        "hands": [{
-            "hand_num": h.get("hand_num"),
-            "profit": h.get("profit"),
-            "total_profit": h.get("total_profit"),
-            "variant_id": h.get("variant_id"),
-        } for h in bhh],
-        "steps": step_series(bt),
-    }
+    bhh = baseline_per_instance(bt, "hand_history",
+                                ["hand_num", "profit", "total_profit", "variant_id"])
+    bhh.sort(key=lambda h: h.get("hand_num") or 0)
+    # The baseline resets every hand, so each sub-trace reports total_profit for
+    # its own hand alone. Re-cumulate so the curve is comparable to a run's.
+    running = 0
+    for h in bhh:
+        running += h.get("profit") or 0
+        h["cumulative_profit"] = running
+    out["baseline"] = {"hands": bhh, "steps": step_series(bt)}
     return out
 
 
@@ -639,6 +656,23 @@ def verify(derived: dict, bsm: dict, db: dict, poker: dict) -> Checks:
         if a:
             c.add("§11.1", f"{aid} per-run scores", e,
                   [r["score"] for r in a["runs"]], tol=0.0002)
+
+    # ---- §11 "Present but degraded" — the null latency index --------------
+    for aid in ("mubit-poker-v5-3.5flash", "mubit-poker-full-3.5flash"):
+        a = g(aid)
+        if not a:
+            continue
+        nulls = [i for i, v in enumerate(a["series"]["mean_latency_by_index"]) if v is None]
+        c.add("§11-deg", f"{aid} latency null index", 119,
+              nulls[0] if nulls else None)
+
+    # ---- baseline per-instance detail IS recoverable (not in the report) ---
+    c.add("new", "BSM baseline per-scan scoring recoverable", True,
+          all(len((v.get("baseline") or {}).get("scans") or []) == 90 for v in bsm.values()))
+    c.add("new", "Poker baseline per-hand history recoverable", True,
+          all(len((v.get("baseline") or {}).get("hands") or []) > 0 for v in poker.values()))
+    c.add("new", "DB baseline per-question outcomes recoverable", True,
+          all(len((v.get("baseline") or {}).get("outcomes") or []) > 0 for v in db.values()))
 
     # ---- §11.7 cost is unusable on 3.5-flash ------------------------------
     bad = [a["id"] for a in derived.values()

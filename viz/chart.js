@@ -401,7 +401,12 @@
       g.appendChild(s("text", { transform: "translate(14," + (M.t + (hh - M.t - M.b) / 2) + ") rotate(-90)", "text-anchor": "middle" },
         "fill:var(--muted);font-size:11px")).textContent = cfg.y.label;
     }
-    legend(card, [...seen].map(([name, color]) => ({ name, color })));
+    /* Deriving the legend from bar.name is only correct while a name maps to a
+     * single colour. When the same measure is drawn in a different hue per
+     * group (stateful reward coloured by system), the derived legend would
+     * name one hue and silently misattribute the rest — so those charts pass
+     * an explicit legend instead. */
+    legend(card, cfg.legend || [...seen].map(([name, color]) => ({ name, color })));
     note(card, cfg.note);
     tableView(card, ["Group", ...[...seen.keys()]],
       groups.map((grp) => [grp.label + (grp.sublabel ? " (" + grp.sublabel + ")" : ""),

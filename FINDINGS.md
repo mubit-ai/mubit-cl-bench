@@ -13,12 +13,23 @@ treated as claims to test, never as sources. No benchmark was re-run.
 
 ## 0. Verification gate
 
-**125 checks re-derived from the artifacts. 0 mismatches.** Every claim in
-DEMO_DATA_REPORT.md §1, §5, §6, §7, §11 that is derivable from the artifacts
-reproduces within the report's own displayed precision. The report is accurate.
+**130 checks re-derived from the artifacts. 128 pass, 2 mismatch.**
 
-That result matters mainly because §7 is a list of accusations against this repo's
-own published numbers. They all hold.
+Every claim in DEMO_DATA_REPORT.md §1, §5, §6, §7 and §11.1/§11.7 reproduces within
+the report's own displayed precision. That matters mainly because §7 is a list of
+accusations against this repo's own published numbers — they all hold.
+
+**The two mismatches are the report's only factual errors found:**
+
+| Claim | Report says | Artifacts say |
+|---|---|---|
+| `mubit-poker-v5-3.5flash` latency null index | 119 | **35** |
+| `mubit-poker-full-3.5flash` latency null index | 119 | **35** |
+
+`mean_cost_by_index` is null at the same index. Minor in isolation, but it is a
+handling instruction ("Handle it") pointing at the wrong array position — code
+written against the report would have skipped hand 120 and plotted a null at
+hand 36.
 
 ---
 
@@ -53,16 +64,28 @@ scans scored IoU 1.000**. In v4, zero do, and its best scan is 0.320.
 
 ## 2. Findings the report does not contain
 
-### 2.1 The stateless control's per-scan spectrum geometry is recoverable
+### 2.1 The stateless control's per-instance detail is recoverable — on every task
 
-The report states `baseline_trace.result.metrics` is empty. That is true, but
-`baseline_trace.instance_traces[i].result.metrics.scan_results[0]` holds one fully
-scored scan each — 90 of them, stitchable by `scan_idx`.
+The report treats the baseline as a curve of aggregate rewards, because
+`baseline_trace.result.metrics` is empty (`{}`) in all 12 artifacts. That is true.
+But **`baseline_trace.instance_traces[i].result.metrics` carries the full
+single-instance record**, and there is one sub-trace per instance:
 
-**Consequence:** the spectrum occupancy visual can show stateful *beside* stateless
-rather than stateful alone. That is what turns §7.1 from an assertion into something
-visible: the stateless band never resolves, across all 90 scans. This is the single
-best asset produced by this pass.
+| Task | Recovered from `instance_traces[i].result.metrics` | Count |
+|---|---|---|
+| Spectrum | `scan_results[0]` — full scored geometry, gt / reported / overlap intervals | 90 |
+| Poker | `hand_history` — per-hand profit and `variant_id` | 120 |
+| Database | `question_history` — per-question correctness, queries, answer | 40 |
+
+**Consequence:** every stateful-vs-stateless comparison can be drawn at the instance
+level, not just as summary rewards. Concretely, the spectrum occupancy visual now
+shows stateful *beside* stateless — which is what turns §7.1 from an assertion into
+something visible: the stateless band never resolves, across all 90 scans. It is the
+single best asset produced by this pass.
+
+Note for poker: the baseline resets every hand, so each sub-trace's `total_profit`
+covers that one hand only. It must be re-cumulated to be comparable to a run's
+curve. `extract.py` does this and exposes it as `cumulative_profit`.
 
 ### 2.2 On Database Exploration, accuracy separates at n=3 — normalized gain does not
 
@@ -93,6 +116,22 @@ direction is real. The magnitude is not.
 Do not use the 2× framing. Cost tells the same story: ICL $1.73 / $0.78 / $0.83 vs
 Mubit $1.03 / $1.29 / $0.90 — overlapping, i.e. **cost is a wash**, and ICL's mean is
 again inflated by run 0.
+
+### 2.4 Poker's entire profit is booked against the easiest opponent
+
+Across the 120-hand schedule, **91–99% of total profit is earned in the first 20
+hands**, while the opponent is `calling_station`. Every stateful run is flat or
+falling for the remaining 100 hands, through `loose_aggressive`, back to
+`calling_station`, then `fit_or_fold`, then `loose_aggressive` again.
+
+The opponent boundaries were derived from `hands[].variant_id`, not assumed, and are
+identical across all three runs of both 120-hand artifacts: switches at hands **21,
+51, 61, 96**.
+
+**Ruling:** this is the mechanism behind poker's negative gain. The system is not
+adapting to opponent changes; it banks early against the one exploitable archetype
+and then stops. Worth stating directly rather than leaving as an unexplained minus
+sign — it turns "memory didn't help" into something you can point at.
 
 ---
 
@@ -150,6 +189,8 @@ Same task, same seed, same 40 instances, same model, 3 runs each.
    says −1.0%. Both are real; they are different runs. One has to go.
 5. **Never ship paper figures without on-screen labelling.** Mem0, ACE and
    ICL-GPT-5.4 have zero artifacts in this repo. This instrument omits them entirely.
+6. **Correct DEMO_DATA_REPORT.md's null-index claim** — it says index 119 for the
+   poker latency/cost nulls; the artifacts say index 35.
 
 ## 5. Cheap data changes that would unlock the most
 

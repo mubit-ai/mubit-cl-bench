@@ -190,6 +190,11 @@
           { name: "Stateless (r_sl)", color: "--sys-baseline", value: A[id].r_sl },
         ],
       })),
+      // Stateful is drawn in each system's own hue, so a legend derived from
+      // bar names would show one hue and misattribute the other four.
+      legend: [...new Set(flat.map((id) => A[id].system))]
+        .map((sys) => ({ name: sys + " (stateful)", color: SYS_COLOR[sys] || "--sys-mubit" }))
+        .concat([{ name: "Stateless control (r_sl)", color: "--sys-baseline" }]),
       note: "The two poker artifacts at 120 hands are the pair where the violet bar sits above the " +
             "coloured one. Note also mubit-bsm-v4: its stateful bar is barely above mubit-bsm-registry's, " +
             "while its stateless bar is half as tall.",

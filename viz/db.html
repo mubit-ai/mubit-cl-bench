@@ -362,7 +362,7 @@
       };
     }),
     note: "Shows how gain accumulates, with the n=3 envelope drawn rather than summarised. Settles the shape " +
-      "of the benefit: mubit-db-3 starts <b>negative</b> — " + f3(muCum[0]) + ", " + f3(muCum[1]) + ", " +
+      "of the benefit: mubit-db-3 starts NEGATIVE — " + f3(muCum[0]) + ", " + f3(muCum[1]) + ", " +
       f3(muCum[2]) + " over its first three questions — because building memory costs queries before any " +
       "of it can be reused, and only crosses into profit later, ending at " + f3(muCum[muCum.length - 1]) +
       ". The envelope is wide for the whole first half: at question 10 the three runs still disagree, so no " +
@@ -407,8 +407,8 @@
       "unflattering direction: mubit-db-3 rises " + f4(preOf("mubit-db-3")) + " → " +
       f4(postOf("mubit-db-3")) + " (+" + (rel("mubit-db-3") * 100).toFixed(1) + "% relative) while icl-db-3 " +
       "rises " + f4(preOf("icl-db-3")) + " → " + f4(postOf("icl-db-3")) + " (+" +
-      (rel("icl-db-3") * 100).toFixed(1) + "% relative). <b>ICL's relative improvement is nearly double " +
-      "Mubit's.</b> Mubit keeps the higher absolute gain in both halves, but this chart does not show memory " +
+      (rel("icl-db-3") * 100).toFixed(1) + "% relative). ICL's RELATIVE improvement is nearly double " +
+      "Mubit's. Mubit keeps the higher absolute gain in both halves, but this chart does not show memory " +
       "handling drift better than in-context stuffing — it shows the opposite trend in relative terms. " +
       "For reference mubit-full-db-3 goes " + f4(preOf("mubit-full-db-3")) + " → " +
       f4(postOf("mubit-full-db-3")) + " (+" + (rel("mubit-full-db-3") * 100).toFixed(1) + "%)."
@@ -437,7 +437,7 @@
     ],
     note: "Shows stateful reward per half, which decomposes the previous chart. Settles what drove Mubit's " +
       "post-drift number: its own reward moved only " + f4(preRew("mubit-db-3")) + " → " +
-      f4(postRew("mubit-db-3")) + ", while its stateless baseline <b>fell</b> " + f4(preBase("mubit-db-3")) +
+      f4(postRew("mubit-db-3")) + ", while its stateless baseline FELL " + f4(preBase("mubit-db-3")) +
       " → " + f4(postBase("mubit-db-3")) + ". Part of Mubit's apparent post-drift improvement is the " +
       "baseline getting worse, not the stateful system getting better. ICL is the cleaner story here: its " +
       "reward genuinely climbed " + f4(preRew("icl-db-3")) + " → " + f4(postRew("icl-db-3")) +
@@ -508,7 +508,7 @@
         { name: "wrong", color: "--st-critical" }
       ],
       note: "Shows all " + (qs.length * det.runs.length) + " question-runs for " + id + " with no aggregation. " +
-        "Faded cells are questions where the agent spent <i>fewer</i> queries than that run's own median " +
+        "Faded cells are questions where the agent spent fewer queries than that run's own median " +
         "(medians by run: " + meds.join(", ") + "), so query effort is legible alongside the outcome. " +
         "All " + qs.length + " questions are labelled difficulty “hard” — there is no difficulty " +
         "variation in this dataset, so nothing can be plotted against it, and any “easy questions " +
@@ -535,10 +535,12 @@
     D["icl-db-3"].runs.map(function (r) { return r.outcomes.filter(function (o) { return o.correct; }).length; }).join("/") +
     " correct, against mubit-db-3's " +
     D["mubit-db-3"].runs.map(function (r) { return r.outcomes.filter(function (o) { return o.correct; }).length; }).join("/") +
-    ". Note how much fainter this grid is — icl-db-3 answers on " +
-    f1(A["icl-db-3"].metrics.avg_queries_per_question.mean) + " queries per question against mubit-db-3's " +
-    f1(A["mubit-db-3"].metrics.avg_queries_per_question.mean) + ", so it is frequently guessing early rather " +
-    "than exploring.");
+    ". The fading channel barely activates here, and that is itself the finding: two of icl-db-3's three " +
+    "runs have a median of ONE query per question, so almost nothing can fall below the median. icl-db-3 " +
+    "averages " + f1(A["icl-db-3"].metrics.avg_queries_per_question.mean) + " queries per question against " +
+    "mubit-db-3's " + f1(A["mubit-db-3"].metrics.avg_queries_per_question.mean) +
+    " — it is frequently answering on a single look rather than exploring, which is why it is cheap in " +
+    "queries and wrong more often.");
 
   // ========================================================== ACT VII =====
   var s7 = act("Act VII — what n=3 can and cannot support",
@@ -565,8 +567,8 @@
     note: "Shows all 9 individual run scores in the clean comparability band. Settles how much confidence " +
       "the Act I ranking deserves: mubit-db-3 scores " +
       A["mubit-db-3"].runs.map(function (r) { return f3(r.score); }).join(" / ") + " and icl-db-3 scores " +
-      A["icl-db-3"].runs.map(function (r) { return f3(r.score); }).join(" / ") + " — <b>the ranges " +
-      "overlap</b>. mubit-db-3's worst run (" + f3(minOf(A["mubit-db-3"].runs.map(function (r) { return r.score; }))) +
+      A["icl-db-3"].runs.map(function (r) { return f3(r.score); }).join(" / ") + " — THE RANGES OVERLAP. " +
+      "mubit-db-3's worst run (" + f3(minOf(A["mubit-db-3"].runs.map(function (r) { return r.score; }))) +
       ") is below two of icl-db-3's three runs. The means differ in Mubit's favour and mubit-full-db-3 " +
       "overlaps both, but with n=3 this is a direction, not a proven separation. Do not quote the mean " +
       "without this picture."
@@ -581,7 +583,8 @@
       SHORT["mubit-genai-db-3"] + " scores " +
       A["mubit-genai-db-3"].runs.map(function (r) { return f3(r.score); }).join(" / ") + " and " + SHORT[gf] +
       " scores " + A[gf].runs.map(function (r) { return f3(r.score); }).join(" / ") + ". Reward here is low " +
-      "precisely because reward penalises the " + f1(A[gf].metrics.avg_queries_per_question.mean) +
+      "precisely because reward penalises the " + f1(A["mubit-genai-db-3"].metrics.avg_queries_per_question.mean) +
+      "–" + f1(A[gf].metrics.avg_queries_per_question.mean) +
       " queries per question these agents spend, even though their answers are the most accurate on the page. " +
       "These numbers must not be ranked against the card above."
   });
@@ -603,8 +606,14 @@
     note: "Shows per-question latency for the 2.5-flash band. Settles whether Mubit's accuracy is bought with " +
       "time: whole-run wall clock is " + Math.round(mean(A["mubit-db-3"].wall.runs.map(function (r) { return r.wall_duration_seconds; }))) +
       "s for mubit-db-3 against " + Math.round(mean(A["icl-db-3"].wall.runs.map(function (r) { return r.wall_duration_seconds; }))) +
-      "s for icl-db-3 — essentially level, despite Mubit issuing more queries, because ICL's calls get " +
-      "slower as its context grows (Act III). No min/max envelope is drawn here: the export carries latency " +
+      "s for icl-db-3 — essentially level, even though mubit-db-3 makes more model calls (" +
+      Math.round(mean(A["mubit-db-3"].wall.runs.map(function (r) { return r.total_interactions; }))) +
+      " against " + Math.round(mean(A["icl-db-3"].wall.runs.map(function (r) { return r.total_interactions; }))) +
+      " per run), because each ICL call is slower: mean response " +
+      f1(mean(A["icl-db-3"].wall.runs.map(function (r) { return r.avg_response_seconds; }))) + "s against " +
+      f1(mean(A["mubit-db-3"].wall.runs.map(function (r) { return r.avg_response_seconds; }))) +
+      "s, which is what a context growing to 96k tokens buys you (Act III). No min/max envelope is drawn " +
+      "here: the export carries latency " +
       "only as a mean per question index, not per run, so the n=3 spread at this granularity was not measured."
   });
 
@@ -621,9 +630,9 @@
       "Settles the price of the accuracy gap: mubit-db-3 costs " + usd(meanCost("mubit-db-3")) +
       " per run against icl-db-3's " + usd(meanCost("icl-db-3")) + " — Mubit is both more accurate and " +
       "marginally cheaper, because halving input tokens offsets its extra calls; mubit-full-db-3 is the " +
-      "expensive one at " + usd(meanCost("mubit-full-db-3")) + ". <b>Excluded:</b> " +
+      "expensive one at " + usd(meanCost("mubit-full-db-3")) + ". EXCLUDED: " +
       uncostable.map(function (id) { return SHORT[id]; }).join(" and ") + " report " +
-      "<code>usage.cost_reliable = false</code> and a literal <code>cost_usd = 0</code> on every run — " +
+      "usage.cost_reliable = false and a literal cost_usd = 0 on every run — " +
       "that is missing accounting, not free inference, and plotting a zero there would read as the strongest " +
       "cost result on the page. They are therefore absent rather than shown at zero."
   });
