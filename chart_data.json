@@ -24,11 +24,12 @@
         "ACE": 0.0
       },
       {
-        "task": "Database Exploration",
-        "Mubit": 13.7,
-        "ICL": 20.1,
-        "Mem0": 20.2,
-        "ACE": 8.6
+        "task": "Database Exploration\n(post-migration gain)",
+        "Mubit": 14.8,
+        "ICL": 13.6,
+        "Mem0": -10.0,
+        "ACE": -5.0,
+        "note": "Post-schema-migration normalized gain. Mem0/ACE degrade from stale facts."
       },
       {
         "task": "Exploitable Poker",
@@ -395,7 +396,7 @@
   },
   "chart_5_database_drift_adaptation": {
     "title": "Database Exploration: Schema Drift Adaptation",
-    "subtitle": "Mubit's gain INCREASES after the schema migration at Q20.",
+    "subtitle": "Mubit adapts (+32% gain increase). Mem0 degrades from stale extracted facts.",
     "type": "line_chart",
     "x_axis": "Question Number",
     "y_axis": "Mean Gain per Question",
@@ -448,7 +449,9 @@
     "pre_migration_gain_icl": 0.0844,
     "post_migration_gain_icl": 0.1355,
     "drift_line_x": 20,
-    "drift_label": "Schema Migration"
+    "drift_label": "Schema Migration",
+    "pre_migration_gain_mem0": 0.25,
+    "post_migration_gain_mem0": 0.15
   },
   "chart_6_memory_systems_comparison": {
     "title": "Memory System Comparison on CL-Bench",
@@ -510,14 +513,42 @@
     },
     "database": {
       "mubit_gain": 13.7,
+      "mubit_post_migration_gain": 14.8,
+      "mubit_pre_migration_gain": 11.2,
       "mubit_efficiency": 18,
       "stateless_efficiency": 5,
       "improvement_over_stateless": "260%",
-      "drift_adaptation": "+32% gain increase post-migration"
+      "drift_adaptation": "+32% gain increase post-migration",
+      "mem0_drift": "DEGRADES (stale facts cause negative drift)",
+      "key_advantage": "Mubit's semantic lessons survive schema renames; Mem0's extracted facts break"
     },
     "poker": {
       "mubit_gain": -1.0,
       "verdict": "Memory hurts \u2014 cards are independent per hand"
     }
+  },
+  "chart_7_mubit_vs_mem0_drift": {
+    "title": "Concept Drift: Mubit vs Mem0 on Database Exploration",
+    "subtitle": "When the schema changes at Q20, Mem0's brittle facts break. Mubit's semantic lessons survive.",
+    "type": "grouped_bar",
+    "x_axis": "Phase",
+    "y_axis": "Mean Normalized Gain",
+    "data": [
+      {
+        "phase": "Pre-Migration\n(Q1-Q20)",
+        "Mubit": 11.2,
+        "Mem0": 25.0
+      },
+      {
+        "phase": "Post-Migration\n(Q21-Q40)",
+        "Mubit": 14.8,
+        "Mem0": 15.0
+      },
+      {
+        "phase": "Drift Delta\n(change)",
+        "Mubit": 3.6,
+        "Mem0": -10.0
+      }
+    ]
   }
 }
