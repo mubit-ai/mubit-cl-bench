@@ -1,0 +1,160 @@
+{
+  "title": "Token Efficiency: Mubit Memory vs Full Context Replay",
+  "x_axis_label": "Number of Runs",
+  "description": "Generalized model of cumulative input tokens for an agent executing N sequential runs. Without memory, each run re-sends all prior run history (quadratic growth). With Mubit, each run retrieves a fixed-size block of relevant lessons (linear growth).",
+  "assumptions": {
+    "system_prompt_tokens": 2000,
+    "avg_run_input_tokens": 3000,
+    "avg_run_output_tokens": 2000,
+    "mubit_retrieval_tokens": 1500
+  },
+  "datapoints": [
+    {
+      "runs": 0,
+      "without_memory": 0,
+      "with_mubit": 0,
+      "tokens_saved": 0,
+      "savings_pct": 0
+    },
+    {
+      "runs": 5,
+      "without_memory": 100000,
+      "with_mubit": 32500,
+      "tokens_saved": 67500,
+      "savings_pct": 67.5
+    },
+    {
+      "runs": 10,
+      "without_memory": 325000,
+      "with_mubit": 65000,
+      "tokens_saved": 260000,
+      "savings_pct": 80.0
+    },
+    {
+      "runs": 15,
+      "without_memory": 675000,
+      "with_mubit": 97500,
+      "tokens_saved": 577500,
+      "savings_pct": 85.6
+    },
+    {
+      "runs": 20,
+      "without_memory": 1150000,
+      "with_mubit": 130000,
+      "tokens_saved": 1020000,
+      "savings_pct": 88.7
+    },
+    {
+      "runs": 25,
+      "without_memory": 1750000,
+      "with_mubit": 162500,
+      "tokens_saved": 1587500,
+      "savings_pct": 90.7
+    },
+    {
+      "runs": 30,
+      "without_memory": 2475000,
+      "with_mubit": 195000,
+      "tokens_saved": 2280000,
+      "savings_pct": 92.1
+    },
+    {
+      "runs": 35,
+      "without_memory": 3325000,
+      "with_mubit": 227500,
+      "tokens_saved": 3097500,
+      "savings_pct": 93.2
+    },
+    {
+      "runs": 40,
+      "without_memory": 4300000,
+      "with_mubit": 260000,
+      "tokens_saved": 4040000,
+      "savings_pct": 94.0
+    },
+    {
+      "runs": 45,
+      "without_memory": 5400000,
+      "with_mubit": 292500,
+      "tokens_saved": 5107500,
+      "savings_pct": 94.6
+    },
+    {
+      "runs": 50,
+      "without_memory": 6625000,
+      "with_mubit": 325000,
+      "tokens_saved": 6300000,
+      "savings_pct": 95.1
+    },
+    {
+      "runs": 55,
+      "without_memory": 7975000,
+      "with_mubit": 357500,
+      "tokens_saved": 7617500,
+      "savings_pct": 95.5
+    },
+    {
+      "runs": 60,
+      "without_memory": 9450000,
+      "with_mubit": 390000,
+      "tokens_saved": 9060000,
+      "savings_pct": 95.9
+    },
+    {
+      "runs": 65,
+      "without_memory": 11050000,
+      "with_mubit": 422500,
+      "tokens_saved": 10627500,
+      "savings_pct": 96.2
+    },
+    {
+      "runs": 70,
+      "without_memory": 12775000,
+      "with_mubit": 455000,
+      "tokens_saved": 12320000,
+      "savings_pct": 96.4
+    },
+    {
+      "runs": 75,
+      "without_memory": 14625000,
+      "with_mubit": 487500,
+      "tokens_saved": 14137500,
+      "savings_pct": 96.7
+    },
+    {
+      "runs": 80,
+      "without_memory": 16600000,
+      "with_mubit": 520000,
+      "tokens_saved": 16080000,
+      "savings_pct": 96.9
+    },
+    {
+      "runs": 85,
+      "without_memory": 18700000,
+      "with_mubit": 552500,
+      "tokens_saved": 18147500,
+      "savings_pct": 97.0
+    },
+    {
+      "runs": 90,
+      "without_memory": 20925000,
+      "with_mubit": 585000,
+      "tokens_saved": 20340000,
+      "savings_pct": 97.2
+    },
+    {
+      "runs": 95,
+      "without_memory": 23275000,
+      "with_mubit": 617500,
+      "tokens_saved": 22657500,
+      "savings_pct": 97.3
+    },
+    {
+      "runs": 100,
+      "without_memory": 25750000,
+      "with_mubit": 650000,
+      "tokens_saved": 25100000,
+      "savings_pct": 97.5
+    }
+  ]
+}
