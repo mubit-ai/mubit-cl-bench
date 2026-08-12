@@ -1,0 +1,852 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Race — does memory help?</title>
+<link rel="stylesheet" href="../../viz/style.css">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* Page-local layout only. Every colour below is a token from viz/style.css;
+ * nothing here introduces a hue, and nothing here is a raw hex.
+ *
+ * The .chrome rule: demo.js inserts the chrome bar as a child of <body>, but
+ * demo.css writes its -28px bleed against <main>'s 28px padding — as a body
+ * child those negative margins push it off the top and past both edges. This
+ * restates the geometry for the body-child case ONLY, so if demo.js later
+ * mounts the bar inside <main> the original rule takes over untouched. */
+body > header.chrome { margin: 0 0 18px; padding: 12px 28px; }
+
+.tile.hero { flex: 1.6 1 260px; }
+.tile.hero .val { font-size: 46px; }
+
+/* A question the arm has finished but the harness has not scored yet. Not a
+ * verdict — an explicit "no verdict yet". */
+.qcell.pending { border-color: var(--axis); color: var(--text-1); }
+
+.strip td.k { color: var(--text-1); }
+.strip td.k2 { color: var(--muted); }
+</style>
+</head><body>
+<main class="wrap">
+
+  <div class="tiles" id="tiles"></div>
+
+  <div id="curve"></div>
+
+  <section class="card">
+    <h3>Every question, both arms</h3>
+    <p class="sub">Same questions, same model, same query budget. One arm carries memory across
+      questions; the other starts each one from nothing. Colour is the harness's verdict — hover a
+      cell for reward, queries and difficulty.</p>
+    <div class="arms">
+      <div class="on-arm">
+        <div class="arm-h">
+          <span class="dot"></span><span class="nm">Memory ON · Mubit</span>
+          <span class="sub" id="onSub">waiting for the run</span>
+        </div>
+        <div class="qgrid" id="onGrid"></div>
+      </div>
+      <div class="off-arm">
+        <div class="arm-h">
+          <span class="dot"></span><span class="nm">Memory OFF · stateless baseline</span>
+          <span class="sub" id="offSub">waiting for the run</span>
+        </div>
+        <div class="qgrid" id="offGrid"></div>
+      </div>
+    </div>
+    <div class="legend">
+      <span class="lg-item"><span class="lg-swatch" style="--sw: color-mix(in oklab, var(--st-good) 65%, var(--surface))"></span>correct</span>
+      <span class="lg-item"><span class="lg-swatch" style="--sw: color-mix(in oklab, var(--st-critical) 55%, var(--surface))"></span>wrong</span>
+      <span class="lg-item"><span class="lg-swatch" style="--sw: var(--plane); border: 1px dashed var(--sys-mubit)"></span>in flight</span>
+      <span class="lg-item"><span class="lg-swatch" style="--sw: var(--plane); border: 1px solid var(--axis)"></span>finished · not scored yet</span>
+      <span class="lg-item"><span class="lg-swatch" style="--sw: var(--st-warning)"></span>first question after the migration</span>
+    </div>
+    <p class="note" id="gridNote"></p>
+  </section>
+
+  <div id="perq"></div>
+
+  <section class="card">
+    <h3>Tokens and cost</h3>
+    <p class="sub">What each arm spent, read straight off the harness.</p>
+    <div class="tv-scroll">
+      <table class="strip">
+        <thead><tr>
+          <th>Arm</th><th>Source</th><th>Model calls</th><th>Input tokens</th>
+          <th>Output tokens</th><th>Total tokens</th><th>Cost</th>
+        </tr></thead>
+        <tbody id="costBody"></tbody>
+      </table>
+    </div>
+    <p class="note" id="costNote"></p>
+  </section>
+
+  <div class="flag warn">
+    <b>One run. Twenty questions. n = 1.</b> The published 13.7% is the mean of three runs of forty
+    questions each. The shaded band on the gain curve is the range a 20-question run of the
+    <em>same</em> system produces by chance alone — a live number inside that band is noise, not a
+    result. Every reward and correctness flag is read from the harness's own snapshot.
+  </div>
+
+</main>
+<script src="../../viz/chart.js"></script>
+<script src="demo.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  /* The verdict screen. Two jobs that pull against each other: be readable
+   * from the back of the room, and be honest that n=1. The tiles and the grids
+   * do the first; the bootstrap band, the caveat flag and every "—" instead of
+   * a zero do the second.
+   *
+   * Nothing here computes a reward. Rewards, correctness and query counts are
+   * read from D.state (harness-populated); the only arithmetic on them is
+   * D.gain() / D.gainCurve(), which live in demo.js. */
+
+  const S = D.state;
+  const esc = D.esc;
+
+  const DEFAULT_TOTAL = 20;
+  // Fallbacks used only until run.config arrives. Sources: README.md and
+  // DEMO_DATA_REPORT.md §head-to-head — mubit-db-3 and icl-db-3, same task,
+  // same model, same seeds, 3 runs x 40 questions each.
+  const FALLBACK_PUBLISHED = 0.137;
+  const FALLBACK_ICL = 0.114;
+
+  const NS = "http://www.w3.org/2000/svg";
+
+  // ------------------------------------------------------------ config ----
+
+  function conf() { return S.config || {}; }
+
+  /* run.config is written by a launcher that does not exist yet, so accept a
+   * gain as either a fraction or a percentage. g_b = (a - b) / (r_max - b) is
+   * <= 1 by construction, so anything past 1.5 can only be a percentage. */
+  function readGain(v) {
+    if (v == null) return null;
+    const n = typeof v === "string" ? Number(v) : v;
+    if (typeof n !== "number" || !isFinite(n)) return null;
+    return Math.abs(n) > 1.5 ? n / 100 : n;
+  }
+
+  function reference(key, fallback) {
+    const v = readGain(conf()[key]);
+    return v == null ? { v: fallback, fromConfig: false } : { v: v, fromConfig: true };
+  }
+
+  /* config.bootstrap, tolerantly. Accepted shapes:
+   *   {p05, p50|median, p95, n, draws}
+   *   {curve|by_n|points: [{n,p05,p50,p95}] | [[n,p05,p50,p95]]}
+   * Anything unrecognised yields null and the band is simply not drawn — an
+   * invented band would be the single most dishonest thing this page could do. */
+  function readBootstrap() {
+    const b = conf().bootstrap;
+    if (!b || typeof b !== "object") return null;
+    const p05 = readGain(b.p05 != null ? b.p05 : b.lo);
+    const p95 = readGain(b.p95 != null ? b.p95 : b.hi);
+    const p50 = readGain(b.p50 != null ? b.p50 : b.median);
+    let curve = null;
+    const raw = b.curve || b.by_n || b.points;
+    if (Array.isArray(raw) && raw.length) {
+      curve = raw
+        .map(function (r) {
+          return Array.isArray(r)
+            ? { n: Number(r[0]), p05: readGain(r[1]), p50: readGain(r[2]), p95: readGain(r[3]) }
+            : {
+                n: Number(r.n != null ? r.n : r.questions),
+                p05: readGain(r.p05 != null ? r.p05 : r.lo),
+                p50: readGain(r.p50 != null ? r.p50 : r.median),
+                p95: readGain(r.p95 != null ? r.p95 : r.hi),
+              };
+        })
+        .filter(function (r) { return isFinite(r.n) && r.p05 != null && r.p95 != null; })
+        .sort(function (a, c) { return a.n - c.n; });
+      if (!curve.length) curve = null;
+    }
+    if (p05 == null && p95 == null && p50 == null && !curve) return null;
+    return {
+      p05: p05, p50: p50, p95: p95, curve: curve,
+      n: Number(b.n != null ? b.n : b.questions) || null,
+      draws: Number(b.draws != null ? b.draws : (b.resamples != null ? b.resamples : b.n_boot)) || null,
+    };
+  }
+
+  /* Questions the run intends to ask, per arm. run.config carries the schedule
+   * (see demo/schedules/demo_drift.json for its shape); fall back to 20, and
+   * grow if the stream turns out to be longer than advertised. */
+  function totalQuestions() {
+    const c = conf();
+    for (const k of ["total_questions", "num_questions", "questions_total"]) {
+      const v = Number(c[k]);
+      if (isFinite(v) && v > 0) return Math.max(v, S.questions.length);
+    }
+    const stages = (c.schedule && c.schedule.stages) || c.stages;
+    if (Array.isArray(stages)) {
+      let sum = 0;
+      for (const st of stages) {
+        const n = Number((st && st.schedule && st.schedule.num_questions) != null
+          ? st.schedule.num_questions : (st && st.num_questions));
+        if (isFinite(n)) sum += n;
+      }
+      if (sum > 0) return Math.max(sum, S.questions.length);
+    }
+    return Math.max(DEFAULT_TOTAL, S.questions.length);
+  }
+
+  function driftIndex() {
+    const d = Number(S.driftIndex);
+    return isFinite(d) ? d : DEFAULT_TOTAL / 2;
+  }
+
+  /* Counting pairs is not computing a reward — it only asks whether the two
+   * numbers exist. It exists to tell "no data yet" apart from "g_b has no
+   * denominator because the memory-off arm is already at r_max". */
+  function pairedCount() {
+    let n = 0;
+    for (const q of S.questions) {
+      if (q.stateful.reward != null && q.stateless.reward != null) n++;
+    }
+    return n;
+  }
+
+  /* D.gainCurve() emits a literal 0 where g_b has no denominator — its
+   * `R_MAX - b === 0 ? 0 : …` branch — and a 0.0% that actually means "not
+   * defined" is precisely the lie this screen exists to avoid. A point is in
+   * that branch exactly when every memory-off reward scored so far equals
+   * r_max (rewards are normalized to r_max, so a mean can only reach it if
+   * every term does). That is a field comparison, not a mean, so it stays
+   * inside the "never compute a reward" rule: the points are dropped, not
+   * recomputed. */
+  function liveCurve() {
+    const pts = D.gainCurve();
+    const out = [];
+    let allAtMax = true, k = 0;
+    for (const q of S.questions) {
+      if (q.stateful.reward == null || q.stateless.reward == null) continue;
+      if (q.stateless.reward !== D.R_MAX) allAtMax = false;
+      const p = pts[k++];
+      if (!p) break;
+      if (!allAtMax) out.push(p);
+    }
+    return out;
+  }
+
+  // ----------------------------------------------------------- helpers ----
+
+  const plural = (n, w) => n + " " + w + (n === 1 ? "" : "s");
+  const tok = (v) => (v == null ? "—" : V.fmt(v));
+  function money(v) {
+    if (v == null) return "—";
+    if (v === 0) return "0 · not priced";
+    return "$" + (Math.abs(v) < 1 ? v.toFixed(3) : v.toFixed(2));
+  }
+
+  function sv(tag, attrs, style) {
+    const n = document.createElementNS(NS, tag);
+    for (const k in attrs || {}) if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+    if (style) n.setAttribute("style", style);
+    return n;
+  }
+  function svText(x, y, anchor, style, text) {
+    const n = sv("text", { x: x, y: y, "text-anchor": anchor }, style);
+    n.textContent = text;
+    return n;
+  }
+  function titled(node, text) {
+    const t = sv("title");
+    t.textContent = text;
+    node.appendChild(t);
+    return node;
+  }
+
+  function legendInto(card, items) {
+    const l = D.el("div", "legend");
+    for (const it of items) {
+      const item = D.el("span", "lg-item");
+      const sw = D.el("span", "lg-swatch" + (it.dash ? " lg-dash" : ""));
+      sw.style.setProperty("--sw", "var(" + it.color + ")");
+      item.appendChild(sw);
+      item.appendChild(D.el("span", null, it.name));
+      l.appendChild(item);
+    }
+    card.appendChild(l);
+  }
+
+  /* The percentiles for a run of THIS length. With a per-n curve that means
+   * picking the supplied point nearest the run's length — picking, never
+   * interpolating; the tile says which length it picked. */
+  function bootstrapAt(bs, N) {
+    if (!bs) return null;
+    if (!bs.curve) return { n: bs.n, p05: bs.p05, p50: bs.p50, p95: bs.p95, exact: true };
+    const want = bs.n || N;
+    let best = null;
+    for (const c of bs.curve) {
+      if (best == null || Math.abs(c.n - want) < Math.abs(best.n - want)) best = c;
+    }
+    return best && { n: best.n, p05: best.p05, p50: best.p50, p95: best.p95, exact: best.n === want };
+  }
+
+  // ------------------------------------------------------------- tiles ----
+
+  function tileHTML(cls, lbl, val, subs) {
+    return '<div class="tile' + (cls ? " " + cls : "") + '">' +
+      '<div class="lbl">' + esc(lbl) + "</div>" +
+      '<div class="val">' + esc(val) + "</div>" +
+      subs.filter(Boolean).map((s) => '<div class="sub">' + esc(s) + "</div>").join("") +
+      "</div>";
+  }
+
+  function paintTiles() {
+    const host = document.getElementById("tiles");
+    const g = D.gain();
+    const N = totalQuestions();
+    const paired = pairedCount();
+    const pub = reference("published_gain", FALLBACK_PUBLISHED);
+    const icl = reference("icl_gain", FALLBACK_ICL);
+    const bs = readBootstrap();
+
+    let liveVal = "—", liveSubs;
+    if (g) {
+      liveVal = D.pct(g.g, 1);
+      liveSubs = [
+        "over " + g.n + " of " + N + " paired questions",
+        "mean reward " + V.fmt(g.rsf, 3) + " on · " + V.fmt(g.rsl, 3) + " off",
+      ];
+    } else if (paired) {
+      liveSubs = [
+        "the memory-off arm already scores r_max over " + plural(paired, "paired question"),
+        "g_b has no denominator while r_max − mean r_off is 0",
+      ];
+    } else {
+      liveSubs = [
+        "waiting for the first question both arms finish",
+        "0 of " + N + " questions paired",
+      ];
+    }
+
+    const at = bootstrapAt(bs, N);
+    let bsVal = "—", bsSubs;
+    const atLen = at && at.n
+      ? "at " + at.n + " questions" + (at.exact ? "" : " — the nearest length supplied")
+      : "run length not stated in run.config";
+    if (at && at.p50 != null) {
+      bsVal = D.pct(at.p50, 1);
+      bsSubs = [
+        at.p05 != null && at.p95 != null
+          ? "p05 " + D.pct(at.p05, 1) + " · p95 " + D.pct(at.p95, 1)
+          : "percentiles not supplied",
+        (bs.draws ? bs.draws.toLocaleString() + " resamples · " : "") + atLen,
+      ];
+    } else if (at && at.p05 != null && at.p95 != null) {
+      bsVal = D.pct(at.p05, 1) + " – " + D.pct(at.p95, 1);
+      bsSubs = ["p05 – p95; no median supplied", atLen];
+    } else {
+      bsSubs = ["not in run.config yet", "no band is drawn until it arrives"];
+    }
+
+    host.innerHTML =
+      tileHTML("hero", "This run · normalized gain", liveVal, liveSubs) +
+      /* Both published references were measured before the baseline-slicing
+       * fix, on a control that never received the migrated database and so
+       * scored lower than it should have on every post-migration question.
+       * That inflates their gain relative to this run's. Saying "same task" was
+       * true of the questions and false of the comparison, so the subtitle now
+       * says which side the bias falls on rather than implying parity. */
+      tileHTML(null, "Published · Mubit", D.pct(pub.v, 1),
+        ["3 runs × 40, uncorrected control", "biased high — not comparable"]) +
+      tileHTML(null, "Published · ICL reference", D.pct(icl.v, 1),
+        ["same model and seeds, same bias", "biased high — not comparable"]) +
+      tileHTML(null, "Bootstrap · a run this short", bsVal, bsSubs);
+  }
+
+  // -------------------------------------------------------- gain curve ----
+
+  function bandPoints(bs, N) {
+    if (!bs) return null;
+    if (bs.curve) {
+      const pts = bs.curve
+        .filter((c) => c.n >= 0 && c.n <= N)
+        .map((c) => [c.n, Math.min(c.p05, c.p95), Math.max(c.p05, c.p95)]);
+      return pts.length ? pts : null;
+    }
+    if (bs.p05 == null || bs.p95 == null) return null;
+    const lo = Math.min(bs.p05, bs.p95), hi = Math.max(bs.p05, bs.p95);
+    return [[1, lo, hi], [N, lo, hi]];
+  }
+
+  function buildCurve(host) {
+    host.innerHTML = "";
+    const N = totalQuestions();
+    const drift = driftIndex();
+    const pts = liveCurve();
+    const pub = reference("published_gain", FALLBACK_PUBLISHED);
+    const icl = reference("icl_gain", FALLBACK_ICL);
+    const bs = readBootstrap();
+    const band = bandPoints(bs, N);
+
+    const series = [{
+      id: "live",
+      name: "This run · cumulative g_b",
+      color: "--sys-mubit",
+      values: pts,
+    }, {
+      id: "published",
+      name: "Published Mubit " + D.pct(pub.v, 1) + (band ? " · shaded = bootstrap p05–p95" : ""),
+      color: "--sys-mubit",
+      dash: true,
+      values: [[0, pub.v], [N, pub.v]],
+      band: band,
+      endLabel: false,
+    }, {
+      id: "icl",
+      name: "ICL reference " + D.pct(icl.v, 1),
+      color: "--sys-icl",
+      dash: true,
+      values: [[0, icl.v], [N, icl.v]],
+      endLabel: false,
+    }];
+
+    // Domain: fixed x so the axis does not jump as points land; y padded out
+    // to a 5-point grid and always containing zero, because zero is the claim
+    // being tested.
+    const ys = [pub.v, icl.v];
+    for (const p of pts) if (p[1] != null) ys.push(p[1]);
+    for (const b of band || []) ys.push(b[1], b[2]);
+    let lo = Math.min.apply(null, ys.concat([0]));
+    let hi = Math.max.apply(null, ys);
+    const pad = Math.max(0.02, (hi - lo) * 0.1);
+    lo = Math.floor((lo - pad) / 0.05) * 0.05;
+    hi = Math.ceil((hi + pad) / 0.05) * 0.05;
+
+    const step = N <= 12 ? 1 : N <= 30 ? 2 : 5;
+    const xticks = [];
+    for (let t = 0; t <= N; t += step) xticks.push(t);
+
+    const bandsCfg = drift > 0 && drift < N
+      ? [{ from: drift, to: N, label: "post-migration", color: "--band" }] : [];
+    const rulesCfg = drift > 0 && drift < N ? [{ at: drift }] : [];
+
+    let note =
+      "g_b = (mean reward with memory − mean reward without) ÷ (r_max − mean reward without), " +
+      "recomputed by demo.js after every question both arms have finished; r_max = " +
+      V.fmt(D.R_MAX, 1) + " on this task. ";
+    /* The band is resampled from the published runs, so it inherits their
+     * uncorrected control and sits higher than a corrected run should. A curve
+     * BELOW the band is therefore the expected outcome now, not a bad day —
+     * which is the opposite of what this sentence used to tell the reader. */
+    note += band
+      ? "The shaded band is the bootstrap p05–p95 for a run this short, resampled from the published " +
+        "runs — which were measured with the uncorrected control, so the band sits high and a " +
+        "corrected run is expected to land below it" +
+        (bs && bs.curve ? ", and the table lists the percentile points without interpolating. " : ". ")
+      : "No bootstrap band is drawn: run.config supplied none, and this page will not invent a " +
+        "range it was not given. ";
+    note += bandsCfg.length
+      ? "The rule at question " + drift + " is the schema migration."
+      : "No migration is marked: the run's drift index falls outside this axis.";
+
+    const card = V.lines(host, {
+      title: "Does memory help? — normalized gain as the run goes",
+      subtitle:
+        "Cumulative g_b over the questions BOTH arms have scored, against the published 3-run result " +
+        "and the ICL reference — same quantity, one axis.",
+      width: 980,
+      height: 360,
+      x: {
+        label: "paired questions scored",
+        domain: [0, N],
+        ticks: xticks,
+        format: (v) => String(Math.round(v)),
+      },
+      y: { label: "normalized gain g_b", domain: [lo, hi], format: (v) => V.pct(v, 1) },
+      xBands: bandsCfg,
+      xRules: rulesCfg,
+      series: series,
+      note: note,
+      table: false, // the derived twin would have two rows; a better one follows
+    });
+
+    // Table-view twin, built by hand so it carries the band as well as the line.
+    const byN = {};
+    for (const p of pts) byN[p[0]] = p[1];
+    const bsAt = {};
+    if (bs && bs.curve) for (const c of bs.curve) bsAt[c.n] = c;
+    const flat = bs && !bs.curve ? bs : null;
+    const cols = ["paired questions", "this run · g_b"];
+    if (band) cols.push("bootstrap p05", "bootstrap p50", "bootstrap p95");
+    const rows = [];
+    for (let n = 1; n <= N; n++) {
+      const row = [String(n), byN[n] != null ? V.pct(byN[n], 1) : "—"];
+      if (band) {
+        // Only the percentiles run.config actually supplied. The band is drawn
+        // between them; the table does not interpolate, so an unsupplied n
+        // reads "—" rather than a number nobody produced.
+        const c = bsAt[n] || flat;
+        row.push(c && c.p05 != null ? V.pct(c.p05, 1) : "—",
+                 c && c.p50 != null ? V.pct(c.p50, 1) : "—",
+                 c && c.p95 != null ? V.pct(c.p95, 1) : "—");
+      }
+      rows.push(row);
+    }
+    V.tableView(card, cols, rows);
+  }
+
+  // ------------------------------------------------------------- grids ----
+
+  const cellCache = { stateful: [], stateless: [] };
+
+  function cellTitle(arm, i, q, label) {
+    const a = q ? q[arm] : null;
+    const num = q && q.num != null ? q.num : i + 1;
+    const state = !a || !a.started ? "not started"
+      : a.correct === true ? "correct"
+      : a.correct === false ? "wrong"
+      : a.done ? "finished · not scored yet" : "in flight";
+    return "Q" + num + " · " + label + "\n" +
+      "state: " + state + "\n" +
+      "reward: " + (a && a.reward != null ? V.fmt(a.reward, 3) : "—") + "\n" +
+      "queries used: " + (a && a.numQueries != null
+        ? a.numQueries + (q && q.budget != null ? " of " + q.budget : "")
+        : "— " + (q && q.budget != null ? "(budget " + q.budget + ")" : "")).trim() + "\n" +
+      "difficulty: " + (q && q.difficulty ? q.difficulty : "—") + "\n" +
+      "stage: " + (q ? q.stage : i >= driftIndex() ? "post" : "pre") + "-migration";
+  }
+
+  function paintGrid(arm, gridId, subId, label) {
+    const grid = document.getElementById(gridId);
+    const N = totalQuestions();
+    const drift = driftIndex();
+    const cells = cellCache[arm];
+    while (cells.length > N) grid.removeChild(cells.pop());
+    while (cells.length < N) {
+      const c = D.el("div", "qcell");
+      grid.appendChild(c);
+      cells.push(c);
+    }
+    let graded = 0, running = 0, finished = 0;
+    for (let i = 0; i < N; i++) {
+      const q = S.questions[i] || null;
+      const a = q ? q[arm] : null;
+      let cls = "qcell";
+      if (a && a.correct === true) { cls += " correct"; graded++; }
+      else if (a && a.correct === false) { cls += " wrong"; graded++; }
+      else if (a && a.started && !a.done) { cls += " running"; running++; }
+      else if (a && a.done) cls += " pending";
+      if (a && a.done) finished++;
+      if (i === drift) cls += " drift";
+      const c = cells[i];
+      if (c.className !== cls) c.className = cls;
+      const txt = String(q && q.num != null ? q.num : i + 1);
+      if (c.textContent !== txt) c.textContent = txt;
+      c.title = cellTitle(arm, i, q, label);
+    }
+    const sub = document.getElementById(subId);
+    sub.textContent = graded + " of " + N + " scored" +
+      (running ? " · " + running + " in flight" : "") +
+      (!graded && !running && !finished ? " · waiting for the run" : "");
+  }
+
+  function paintGrids() {
+    paintGrid("stateful", "onGrid", "onSub", "memory ON");
+    paintGrid("stateless", "offGrid", "offSub", "memory OFF");
+    const drift = driftIndex();
+    /* Most cells are red on both arms, which reads as a broken display until
+     * you know the task. It is not: correctness is the harness's own flag, and
+     * this is a hard benchmark. The published counts, when run.config carries
+     * them, are read off the committed artifact by build_reference() — they are
+     * the scale that makes tonight's grid legible rather than alarming. */
+    const pc = conf().published_correct;
+    document.getElementById("gridNote").textContent =
+      "A cell stays outlined until a harness snapshot scores it. The amber edge marks question " +
+      (drift + 1) + ", the first after the schema migration. Most cells are red on both arms and " +
+      "that is the task, not a fault: every question is difficulty: hard, and grading is " +
+      "all-or-nothing — integers exact, floats within 1%, text exact — so a near miss scores 0 " +
+      "however efficiently it was reached." +
+      (pc && pc.stateful_mean != null
+        ? " For scale, the published runs of this same system average " + pc.stateful_mean +
+          " of " + pc.questions + " correct with memory and " + pc.stateless + " of " +
+          pc.questions + " without."
+        : "");
+  }
+
+  // ------------------------------------------- per-question reward dots ----
+
+  /* Paired dots, hand-rolled. V.dots is a per-artifact row plot whose axis,
+   * tooltip and table are all written for "3 runs of one artifact" — using it
+   * here would print "run 0 / run 1 / run 2" over two arms. Bars are out by
+   * house rule; so is a bar with an error bar. This is a dumbbell: one dot per
+   * arm per question, joined, dodged so equal rewards do not hide each other. */
+  function buildDots(host) {
+    host.innerHTML = "";
+    const N = totalQuestions();
+    const drift = driftIndex();
+
+    const rows = [];
+    for (let i = 0; i < N; i++) {
+      const q = S.questions[i] || null;
+      rows.push({
+        i: i,
+        num: q && q.num != null ? q.num : i + 1,
+        difficulty: q ? q.difficulty : null,
+        sf: q ? q.stateful.reward : null,
+        sl: q ? q.stateless.reward : null,
+        qsf: q ? q.stateful.numQueries : null,
+        qsl: q ? q.stateless.numQueries : null,
+        csf: q ? q.stateful.correct : null,
+        csl: q ? q.stateless.correct : null,
+      });
+    }
+
+    const card = D.el("section", "card");
+    card.appendChild(D.el("h3", null, "Per-question reward, both arms"));
+    card.appendChild(D.el("p", "sub",
+      "Memory ON and memory OFF on the same question, in schedule order. The mean of these dots is " +
+      "what the gain curve above turns into a single number."));
+    host.appendChild(card);
+
+    const vals = [];
+    for (const r of rows) {
+      if (r.sf != null) vals.push(r.sf);
+      if (r.sl != null) vals.push(r.sl);
+    }
+    if (!vals.length) {
+      card.appendChild(D.el("div", "empty-state",
+        "No question has been scored yet. Dots appear as the harness reports each question's reward — " +
+        "nothing is drawn from a partial answer."));
+      return;
+    }
+
+    const W = 980, H = 280, M = { t: 18, r: 26, b: 46, l: 72 };
+    const inner = W - M.l - M.r;
+    const slot = inner / N;
+
+    let maxV = Math.max.apply(null, vals);
+    let minV = Math.min.apply(null, vals);
+    let hi = Math.max(0.2, Math.ceil((maxV * 1.15) / 0.1) * 0.1);
+    if (hi > D.R_MAX && maxV <= D.R_MAX) hi = D.R_MAX;
+    if (hi < maxV) hi = maxV;
+    const lo = Math.min(0, Math.floor(minV / 0.1) * 0.1);
+
+    const x = (idx) => M.l + (idx + 0.5) * slot;          // centre of question idx
+    const xEdge = (idx) => M.l + idx * slot;              // boundary before idx
+    const y = (v) => H - M.b - ((v - lo) / (hi - lo || 1)) * (H - M.t - M.b);
+    const dodge = Math.min(5, slot * 0.18);
+
+    const wrap = D.el("div", "plot");
+    const svg = sv("svg", {
+      viewBox: "0 0 " + W + " " + H,
+      preserveAspectRatio: "xMidYMid meet",
+      role: "img",
+      "aria-label": "Per-question reward for the memory-on and memory-off arms",
+    });
+    wrap.appendChild(svg);
+    card.appendChild(wrap);
+    const g = sv("g");
+    svg.appendChild(g);
+
+    if (drift > 0 && drift < N) {
+      g.appendChild(sv("rect", {
+        x: xEdge(drift), y: M.t, width: Math.max(0, W - M.r - xEdge(drift)), height: H - M.t - M.b,
+      }, "fill:var(--band);opacity:.5"));
+      g.appendChild(svText((xEdge(drift) + W - M.r) / 2, M.t + 13, "middle",
+        "fill:var(--muted);font-size:10px", "post-migration"));
+    }
+
+    for (const t of V.niceTicks(lo, hi, 5)) {
+      g.appendChild(sv("line", { x1: M.l, x2: W - M.r, y1: y(t), y2: y(t) },
+        "stroke:var(--grid);stroke-width:1"));
+      g.appendChild(svText(M.l - 8, y(t) + 4, "end",
+        "fill:var(--muted);font-size:11px;font-variant-numeric:tabular-nums", V.fmt(t, 2)));
+    }
+    g.appendChild(sv("line", { x1: M.l, x2: W - M.r, y1: y(Math.max(lo, 0)), y2: y(Math.max(lo, 0)) },
+      "stroke:var(--axis);stroke-width:1"));
+    if (drift > 0 && drift < N) {
+      g.appendChild(sv("line", { x1: xEdge(drift), x2: xEdge(drift), y1: M.t, y2: H - M.b },
+        "stroke:var(--axis);stroke-width:1"));
+    }
+
+    const labelEvery = N <= 24 ? 1 : Math.ceil(N / 20);
+    for (const r of rows) {
+      if (r.i % labelEvery !== 0 && r.i !== N - 1) continue;
+      g.appendChild(svText(x(r.i), H - M.b + 17, "middle",
+        "fill:var(--muted);font-size:11px;font-variant-numeric:tabular-nums", String(r.num)));
+    }
+    g.appendChild(svText((M.l + W - M.r) / 2, H - 6, "middle",
+      "fill:var(--muted);font-size:11px", "question, in schedule order"));
+    g.appendChild(sv("text", {
+      transform: "translate(14," + (M.t + (H - M.t - M.b) / 2) + ") rotate(-90)", "text-anchor": "middle",
+    }, "fill:var(--muted);font-size:11px")).textContent = "reward (r_max = " + V.fmt(D.R_MAX, 1) + ")";
+
+    for (const r of rows) {
+      if (r.sf != null && r.sl != null) {
+        g.appendChild(sv("line", { x1: x(r.i), x2: x(r.i), y1: y(r.sf), y2: y(r.sl) },
+          "stroke:var(--axis);stroke-width:1"));
+      }
+      if (r.sf != null) {
+        g.appendChild(titled(sv("circle", { cx: x(r.i) - dodge, cy: y(r.sf), r: 4.5 },
+          "fill:var(--sys-mubit);stroke:var(--surface);stroke-width:2"),
+          "Q" + r.num + " · memory ON\nreward " + V.fmt(r.sf, 3) +
+          "\nqueries " + (r.qsf != null ? r.qsf : "—") +
+          "\ndifficulty " + (r.difficulty || "—")));
+      }
+      if (r.sl != null) {
+        g.appendChild(titled(sv("circle", { cx: x(r.i) + dodge, cy: y(r.sl), r: 4.5 },
+          "fill:var(--sys-baseline);stroke:var(--surface);stroke-width:2"),
+          "Q" + r.num + " · memory OFF\nreward " + V.fmt(r.sl, 3) +
+          "\nqueries " + (r.qsl != null ? r.qsl : "—") +
+          "\ndifficulty " + (r.difficulty || "—")));
+      }
+    }
+
+    legendInto(card, [
+      { name: "Memory ON · Mubit", color: "--sys-mubit" },
+      { name: "Memory OFF · stateless baseline", color: "--sys-baseline" },
+    ]);
+
+    const scored = rows.filter((r) => r.sf != null || r.sl != null).length;
+    const paired = rows.filter((r) => r.sf != null && r.sl != null).length;
+    card.appendChild(D.el("p", "note",
+      "The harness's per-question rewards. The arms are dodged ±" + dodge.toFixed(1) + "px so " +
+      "identical rewards — common here, where a wrong answer scores exactly 0 — stay countable. The " +
+      "y axis is scaled to the observed range, not to r_max: " + scored + " of " + N + " questions " +
+      "have at least one reward, " + paired + " have both."));
+
+    V.tableView(card,
+      ["question", "difficulty", "reward ON", "reward OFF", "correct ON", "correct OFF", "queries ON", "queries OFF"],
+      rows.filter((r) => r.sf != null || r.sl != null || r.csf != null || r.csl != null)
+        .map((r) => [
+          "Q" + r.num + (r.i >= drift ? " (post)" : ""),
+          r.difficulty || "—",
+          r.sf != null ? V.fmt(r.sf, 3) : "—",
+          r.sl != null ? V.fmt(r.sl, 3) : "—",
+          r.csf == null ? "—" : r.csf ? "yes" : "no",
+          r.csl == null ? "—" : r.csl ? "yes" : "no",
+          r.qsf != null ? r.qsf : "—",
+          r.qsl != null ? r.qsl : "—",
+        ]));
+  }
+
+  // -------------------------------------------------------------- cost ----
+
+  /* execution.usage is keyed by call site — respond / observe / interaction —
+   * and `interaction` is the SUM of the other two, so these are never added
+   * together. `respond` is the bucket the published token comparison uses
+   * (scripts/extract.py), so it is preferred here for the same reason. */
+  function harnessUsage(arm) {
+    const h = S.harness[arm];
+    if (!h) return null;
+    const u = h.usage;
+    let b = null, src = null;
+    if (u && typeof u === "object") {
+      if (u.respond) { b = u.respond; src = "harness · usage.respond"; }
+      else if (u.interaction) { b = u.interaction; src = "harness · usage.interaction"; }
+      else if (u.input_tokens != null || u.total_tokens != null) { b = u; src = "harness · usage"; }
+    }
+    if (!b) {
+      if (h.total_interactions == null) return null;
+      return { src: "harness · execution", calls: h.total_interactions,
+               inp: null, out: null, tot: null, cost: null };
+    }
+    return {
+      src: src,
+      calls: b.call_count != null ? b.call_count : h.total_interactions,
+      inp: b.input_tokens != null ? b.input_tokens : null,
+      out: b.output_tokens != null ? b.output_tokens : null,
+      tot: b.total_tokens != null ? b.total_tokens : null,
+      cost: b.cost_usd != null ? b.cost_usd : null,
+    };
+  }
+
+  function liveUsage(arm) {
+    let turns = 0, priced = 0, inp = 0, out = 0, tot = 0, cost = 0;
+    let anyTok = false, anyCost = false;
+    for (const q of S.questions) {
+      for (const t of q[arm].turns) {
+        turns++;
+        const u = t.usage;
+        if (!u) continue;
+        priced++;
+        if (u.input_tokens != null) { inp += u.input_tokens; anyTok = true; }
+        if (u.output_tokens != null) { out += u.output_tokens; anyTok = true; }
+        if (u.total_tokens != null) { tot += u.total_tokens; anyTok = true; }
+        if (u.cost_usd != null) { cost += u.cost_usd; anyCost = true; }
+      }
+    }
+    if (!turns) return null;
+    return {
+      src: "live · " + plural(turns, "turn") + " seen" + (priced < turns ? " (" + priced + " with usage)" : ""),
+      calls: turns,
+      inp: anyTok ? inp : null,
+      out: anyTok ? out : null,
+      tot: anyTok ? tot : null,
+      cost: anyCost ? cost : null,
+    };
+  }
+
+  function costRow(armLabel, u, first) {
+    if (!u) {
+      return "<tr><td class='k'>" + esc(first ? armLabel : "") + "</td>" +
+        "<td class='k2'>no data yet</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>";
+    }
+    return "<tr><td class='k'>" + esc(first ? armLabel : "") + "</td>" +
+      "<td class='k2'>" + esc(u.src) + "</td>" +
+      "<td>" + esc(u.calls == null ? "—" : V.fmt(u.calls)) + "</td>" +
+      "<td>" + esc(tok(u.inp)) + "</td>" +
+      "<td>" + esc(tok(u.out)) + "</td>" +
+      "<td>" + esc(tok(u.tot)) + "</td>" +
+      "<td>" + esc(money(u.cost)) + "</td></tr>";
+  }
+
+  function paintCost() {
+    const on = harnessUsage("stateful"), onLive = liveUsage("stateful");
+    const off = harnessUsage("stateless"), offLive = liveUsage("stateless");
+    document.getElementById("costBody").innerHTML =
+      costRow("Memory ON", on, true) + costRow("Memory ON", onLive, !on) +
+      costRow("Memory OFF", off, true) + costRow("Memory OFF", offLive, !off);
+
+    const haveAny = on || off;
+    document.getElementById("costNote").textContent =
+      (haveAny
+        ? "Harness rows are the run's own usage accounting; live rows are the per-turn usage this page " +
+          "has seen on the stream, and lag the harness because a snapshot lands only when the harness " +
+          "writes one. They are two views of the same calls, not two costs to add. "
+        : "No harness snapshot has arrived yet, so no total is known. The live rows fill in from per-turn " +
+          "usage events as the run proceeds; empty cells mean not-yet-reported, never zero. ") +
+      "execution.usage is split by call site and `interaction` is the sum of `respond` and `observe`, so " +
+      "only one bucket is ever read. A cost of exactly 0 means the model's pricing did not resolve — it " +
+      "is shown as “0 · not priced” rather than as free.";
+  }
+
+  // ------------------------------------------------------------- paint ----
+
+  /* Charts are rebuilt from scratch, which throws away hover state and any
+   * open table view — so rebuild only when the numbers behind them changed,
+   * not on every frame of a burst. */
+  let sigCurve = null, sigDots = null;
+
+  function paint() {
+    paintTiles();
+
+    const c = JSON.stringify([liveCurve(), conf().published_gain, conf().icl_gain,
+      conf().bootstrap, totalQuestions(), driftIndex()]);
+    if (c !== sigCurve) { sigCurve = c; buildCurve(document.getElementById("curve")); }
+
+    paintGrids();
+
+    const d = JSON.stringify([totalQuestions(), driftIndex(), S.questions.map((q) => [
+      q.num, q.difficulty,
+      q.stateful.reward, q.stateless.reward,
+      q.stateful.correct, q.stateless.correct,
+      q.stateful.numQueries, q.stateless.numQueries,
+    ])]);
+    if (d !== sigDots) { sigDots = d; buildDots(document.getElementById("perq")); }
+
+    paintCost();
+  }
+
+  D.mountChrome("Race", "Does memory help? Same questions, one arm remembers — n = 1");
+  D.onRender(paint);
+  paint(); // the empty state has to be legible before the first event lands
+  D.connect();
+})();
+</script>
+</body></html>

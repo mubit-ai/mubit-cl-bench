@@ -1,0 +1,268 @@
+# Findings — what the data supports
+
+**Branch:** `viz-instrument` · **Date:** 2026-08-11 · **Source:** `results/*.json.gz` only
+
+This is the output of an analysis pass, not a demo. Its job was to decide what a
+demo is allowed to claim. Every number below was re-derived from the artifacts by
+`scripts/extract.py`; `chart_data.json`, `README.md` and `DEMO_DATA_REPORT.md` were
+treated as claims to test, never as sources. No benchmark was re-run.
+
+**Reproduce:** `python3 scripts/extract.py` (stdlib only), then open `viz/index.html`.
+
+---
+
+## 0. Verification gate
+
+**142 checks re-derived from the artifacts. 140 pass, 2 mismatch.**
+
+Every claim in DEMO_DATA_REPORT.md §1, §5, §6, §7 and §11.1/§11.7 reproduces within
+the report's own displayed precision. That matters mainly because §7 is a list of
+accusations against this repo's own published numbers — they all hold.
+
+**The two mismatches are the report's only factual errors found:**
+
+| Claim | Report says | Artifacts say |
+|---|---|---|
+| `mubit-poker-v5-3.5flash` latency null index | 119 | **35** |
+| `mubit-poker-full-3.5flash` latency null index | 119 | **35** |
+
+`mean_cost_by_index` is null at the same index. Minor in isolation, but it is a
+handling instruction ("Handle it") pointing at the wrong array position — code
+written against the report would have skipped hand 120 and plotted a null at
+hand 36.
+
+---
+
+## 1. Verdicts on each §7 accusation
+
+| # | Accusation | Verdict | The number that settles it |
+|---|---|---|---|
+| 7.1 | BSM's +53.7% is a baseline artifact, not learning | **CONFIRMED** | Stateful 0.6385 → 0.6468 (+1.3%). Stateless 0.4697 → **0.2366** (−49.6%) |
+| 7.2 | BSM v2/v4 system prompt contains ground-truth grid frequencies | **OPEN — not testable here** | Lives in source + git history, not in any artifact |
+| 7.3 | `chart_data.json` duplicates competitor values across two tasks | **CONFIRMED** | Database and Poker rows are byte-identical: ICL 20.1 / Mem0 20.2 / ACE 8.6 |
+| 7.4 | README and `chart_data.json` disagree on poker | **CONFIRMED** | +7.5% at 5 hands; −1.0% and −1.4% at 120 hands |
+| 7.5 | The drift story favours ICL, not Mubit | **CONFIRMED** | Relative post-drift gain increase: Mubit +31.68%, ICL +60.51% |
+| 7.6 | `chart_data.json` chart 6 contradicts the artifacts | **CONFIRMED, but narrower than stated** | ICL `db_efficiency` "17%" vs actual 14.5%. Mubit's "18%" and "65%" are both correct |
+| 7.7 | Rendering bugs in the committed PNGs | **NOT RE-TESTED** | Charts rebuilt from scratch instead; old pipeline left untouched |
+
+### 7.1 in more detail — the mechanism is sharper than the report says
+
+The report attributes the baseline collapse to v4's `_filter_to_registry` post-filter.
+Measured across all three runs, that filter moved:
+
+- the **stateful** system from 16.74 → 16.16 reported transmitters per scan (**−3.5%**)
+- the **stateless** baseline from 8.11 → 3.31 (**−59%**)
+
+It barely touched the system it was written for and gutted the control. In v2 the
+baseline over-reported often enough to hit accidental exact matches — **10 of its 90
+scans scored IoU 1.000**. In v4, zero do, and its best scan is 0.320.
+
+**Ruling:** the +53.7% figure must not be presented as evidence of learning. Present
+`r_sf` (0.647) against `r_sl` (0.237) with the per-scan curve, or present v1.
+
+---
+
+## 2. Findings the report does not contain
+
+### 2.1 The stateless control's per-instance detail is recoverable — on every task
+
+The report treats the baseline as a curve of aggregate rewards, because
+`baseline_trace.result.metrics` is empty (`{}`) in all 12 artifacts. That is true.
+But **`baseline_trace.instance_traces[i].result.metrics` carries the full
+single-instance record**, and there is one sub-trace per instance:
+
+| Task | Recovered from `instance_traces[i].result.metrics` | Count |
+|---|---|---|
+| Spectrum | `scan_results[0]` — full scored geometry, gt / reported / overlap intervals | 90 |
+| Poker | `hand_history` — per-hand profit and `variant_id` | 120 |
+| Database | `question_history` — per-question correctness, queries, answer | 40 |
+
+**Consequence:** every stateful-vs-stateless comparison can be drawn at the instance
+level, not just as summary rewards. Concretely, the spectrum occupancy visual now
+shows stateful *beside* stateless — which is what turns §7.1 from an assertion into
+something visible: the stateless band never resolves, across all 90 scans. It is the
+single best asset produced by this pass.
+
+**Two traps, both of which silently produce a plausible-looking wrong chart:**
+
+1. **There is no usable ordering key.** Each sub-trace only knows its own instance,
+   so `scan_idx` is `0` on all 90 spectrum entries and `hand_num` is `1` on all 120
+   poker entries. Sorting by them is a no-op that happens to preserve list order by
+   stable-sort accident, and plotting against them collapses every point onto one x
+   value. The real ordering is `instance_traces` order — `extract.py` now verifies it
+   elementwise against `baseline_reward_by_index` instead of assuming it.
+2. **Poker `total_profit` is per-hand, not cumulative.** The baseline resets every
+   hand, so each sub-trace's `total_profit` equals its own `profit`. It must be
+   re-cumulated; `extract.py` exposes that as `cumulative_profit`.
+
+Cross-checked independently: the recovered poker curve agrees with
+`baseline_reward_by_index × 10` to the chip at every one of 120 hands, endpoints
+included (463 chips for v5, 360 for full). Two extraction paths, identical answer.
+
+### 2.5 Database reward is query-efficiency weighted, not accuracy — and that explains the whole task
+
+Derived from the artifacts and verified elementwise across all five DB artifacts:
+
+```
+reward = correct ? (max_queries_per_question − num_queries) / max_queries_per_question : 0
+```
+
+with `max_queries_per_question = 15`. A wrong answer scores 0 regardless of effort.
+**A correct answer that used the full budget also scores 0.**
+
+This is not in the report, and it dissolves the "accuracy and gain point in opposite
+directions" puzzle (report §11.6) into arithmetic:
+
+| Artifact | Accuracy | Mean queries | Predicted r_sf | Actual r_sf |
+|---|---|---|---|---|
+| `mubit-db-3` | 0.3167 | 6.85 | 0.317 × (15−6.85)/15 = **0.172** | 0.180 |
+| `mubit-genai-db-full-3.5flash` | 0.7167 | 13.62 | 0.717 × (15−13.62)/15 = **0.066** | 0.070 |
+
+The `mubit_genai` artifacts aren't scoring badly because they learn badly. They score
+badly because they spend 13.6 of a 15-query budget, and the reward function charges
+them for it. Their own stateless baseline does nearly as well for the same reason,
+which is why their normalized gain collapses to 1.1%.
+
+**Ruling:** any demo that shows accuracy must also say what the benchmark actually
+rewards, or the two numbers look contradictory when they are the same number seen
+twice. This is also the honest answer to "why is Mubit's gain only 13.7% when its
+accuracy is 65% better than ICL's."
+
+### 2.2 On Database Exploration, accuracy separates at n=3 — normalized gain does not
+
+| Artifact | Accuracy (min → max over 3 runs) | Per-run score |
+|---|---|---|
+| `icl-db-3` | 0.175 → 0.225 | 0.113 / 0.177 / 0.145 |
+| `mubit-db-3` | **0.250 → 0.375** | 0.205 / 0.122 / 0.213 |
+| `mubit-full-db-3` | **0.300 → 0.375** | 0.222 / 0.193 / 0.130 |
+
+Mubit's **worst** accuracy run (0.250) beats ICL's **best** (0.225). No overlap, in
+either memory configuration. The report's §11.1 warning about overlapping runs is
+correct — but it is about the gain-derived *scores*, and it does not carry over to
+accuracy.
+
+**Ruling:** accuracy is the defensible head-to-head claim. Normalized gain on this
+task is not separable at n=3 and should not be the headline.
+
+### 2.3 "Half the input tokens" is an artifact of one outlier run
+
+The 6.40M vs 3.23M comparison is a mean of three. ICL's three runs are
+**10,317,862 / 4,230,964 / 4,639,859** — run 0 is more than double the other two and
+drags the mean up. Mubit's are 3,216,449 / 3,748,460 / 2,715,562.
+
+The ranges still separate (Mubit's max 3.75M sits below ICL's min 4.23M), so the
+direction is real. The magnitude is not.
+
+**Ruling:** claim "consistently fewer input tokens across every run," not "half."
+Do not use the 2× framing. Cost tells the same story: ICL $1.73 / $0.78 / $0.83 vs
+Mubit $1.03 / $1.29 / $0.90 — overlapping, i.e. **cost is a wash**, and ICL's mean is
+again inflated by run 0.
+
+### 2.4 Poker's entire profit is booked against the easiest opponent
+
+Across the 120-hand schedule, **91–99% of total profit is earned in the first 20
+hands**, while the opponent is `calling_station`. Every stateful run is flat or
+falling for the remaining 100 hands, through `loose_aggressive`, back to
+`calling_station`, then `fit_or_fold`, then `loose_aggressive` again.
+
+The opponent boundaries were derived from `hands[].variant_id`, not assumed, and are
+identical across all three runs of both 120-hand artifacts: switches at hands **21,
+51, 61, 96**.
+
+**Ruling:** this is the mechanism behind poker's negative gain. The system is not
+adapting to opponent changes; it banks early against the one exploitable archetype
+and then stops. Worth stating directly rather than leaving as an unexplained minus
+sign — it turns "memory didn't help" into something you can point at.
+
+---
+
+## 3. What each task can claim
+
+### Database Exploration — the only clean head-to-head in the repo
+
+Same task, same seed, same 40 instances, same model, 3 runs each.
+
+- **Can claim:** accuracy 31.7% (Mubit) and 33.3% (Mubit+reinforcement) against ICL's
+  19.2%, with no run-to-run overlap, at consistently lower input-token usage and
+  equal cost.
+- **Cannot claim:** a normalized-gain win (13.7% vs 11.4% — the per-run scores
+  overlap), or a 2× token reduction.
+- **Must disclose:** the two `mubit_genai` artifacts reach the best accuracy in the
+  repo (66.7% and 71.7%) at nearly the worst gain (1.9%, 1.1%). Per §2.5 this is not
+  a contradiction — the reward function charges for queries used, and they spend 13.5
+  of a 15-query budget. State the reward definition alongside any accuracy number.
+
+### Blind Spectrum Monitoring — the best visual, the worst provenance
+
+- **Can claim (v1, `mubit-bsm-3.5flash`):** 11.6% normalized gain. This adapter does
+  not use the disputed system prompt and is clean.
+- **Blocked pending §7.2 (v2, v4):** everything else on this task, including the
+  occupancy heatmap, the 0.647-vs-0.237 comparison, and the unsafe-bandwidth curve —
+  which is otherwise the most persuasive chart produced by this pass (stateful
+  reaches 0 unsafe MHz; the control holds ~100 MHz for all 90 scans).
+- **Must never claim:** +53.7% as a learning result. See §7.1.
+- **No ICL counterpart exists** for this task at any model, so no head-to-head is
+  possible without new runs.
+
+### Exploitable Poker — memory does not help
+
+- **The honest reading:** at 5 hands, +7.5%; at 120 hands, −1.0% and −1.4%. The
+  120-hand result is the one with enough data behind it. Memory does not help on
+  poker, and at 120 hands the system scores below its own stateless control
+  (r_sf 0.297 vs r_sl 0.386).
+- **Recommendation:** say so explicitly. It costs nothing and makes the Database
+  claim more credible, not less. Drop the 5-hand number entirely — n=5 × 3 runs
+  cannot support a claim in either direction.
+- **No ICL counterpart at 120 hands.**
+
+---
+
+## 4. Actions required before any demo
+
+1. **Resolve §7.2.** Read `BSM_SYSTEM_PROMPT` in `systems/mubit_bsm/system.py` and
+   decide: re-run v4 with a neutral prompt, disclose on screen, or use v1 only. This
+   is the one open item and it gates the strongest visual.
+2. **Regenerate `chart_data.json` from `scripts/extract.py`.** It currently carries a
+   duplicated competitor row (§7.3) and one wrong cell (§7.6).
+3. **Retire or rebuild `charts/*.png`.** Left untouched by this pass, and per §7.7
+   they contain axis bugs and undisclosed smoothing. They are committed at HEAD.
+4. **Decide the poker framing** — currently README says +7.5% and `chart_data.json`
+   says −1.0%. Both are real; they are different runs. One has to go.
+5. **Never ship paper figures without on-screen labelling.** Mem0, ACE and
+   ICL-GPT-5.4 have zero artifacts in this repo. This instrument omits them entirely.
+6. **Correct DEMO_DATA_REPORT.md's null-index claim** — it says index 119 for the
+   poker latency/cost nulls; the artifacts say index 35.
+
+## 5. Cheap data changes that would unlock the most
+
+1. One ICL baseline on BSM at gemini-3.5-flash — converts the best visual from a solo
+   curve into a real head-to-head.
+2. Raise n from 3 to 10 on the Database comparison — would settle whether the gain
+   claim separates, as accuracy already does.
+3. Log `remember()` writes into `trace.system_memory` (currently `None` in all 12
+   artifacts) — unlocks a memory-timeline and any forgetting/reinforcement story.
+   Today only *retrieved* lessons are visible, never the store.
+
+---
+
+## 6. What this pass built
+
+`scripts/extract.py` → `viz_data/` → four pages under `viz/` (open `viz/index.html`
+directly from disk; no server, no build).
+
+| Page | Contents |
+|---|---|
+| `index.html` | Verification gate, per-artifact gain in comparability bands, paired r_sf/r_sl, per-run dots, and an explicit list of what was never measured |
+| `bsm.html` | Frequency × scan occupancy heatmap for stateful **and** stateless, unsmoothed IoU curves with min/max envelope, registry accumulation, unsafe-bandwidth curve, and the §7.1 finding |
+| `db.html` | Head-to-head panels, accuracy-vs-gain tension, context growth, cumulative gain, drift, per-question grid, per-run dots, latency and cost |
+| `poker.html` | The 5-vs-120 contradiction, opponent-regime drift, stateful-vs-stateless, per-run dots, per-regime profit, latency |
+
+Conventions held throughout: mean line with a **min/max** envelope (never a bar with
+an error bar at n=3); artifacts grouped into comparability bands so different models
+never sit adjacent; red reserved exclusively for unsafe spectrum claims; measured
+data only, with missing counterparts drawn as labelled empty slots; no smoothing
+anywhere; a table view on every chart.
+
+**Deferred:** the three-pane agent replay. It is persuasive but it cannot tell you
+whether a claim is true, which was this pass's only job. The interaction-level data
+it needs is already extracted.

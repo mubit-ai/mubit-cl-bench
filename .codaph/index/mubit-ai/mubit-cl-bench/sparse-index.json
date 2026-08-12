@@ -1,0 +1,67 @@
+{
+  "repoId": "mubit-ai/mubit-cl-bench",
+  "sessions": {
+    "99217fab-f2e0-446f-aee2-235ee2637642": {
+      "from": "2026-08-11T14:30:16.599Z",
+      "to": "2026-08-11T16:56:18.155Z",
+      "eventCount": 221,
+      "segments": [
+        "events/mubit-ai/mubit-cl-bench/2026/08/11/segment-20260811.jsonl"
+      ],
+      "threads": [
+        "99217fab-f2e0-446f-aee2-235ee2637642"
+      ],
+      "actors": [
+        "e1daru"
+      ]
+    },
+    "7e57b36e-7df0-407f-b8a0-453e3db74a33": {
+      "from": "2026-08-11T15:44:37.980Z",
+      "to": "2026-08-11T20:04:19.479Z",
+      "eventCount": 1848,
+      "segments": [
+        "events/mubit-ai/mubit-cl-bench/2026/08/11/segment-20260811.jsonl"
+      ],
+      "threads": [
+        "7e57b36e-7df0-407f-b8a0-453e3db74a33"
+      ],
+      "actors": [
+        "e1daru"
+      ]
+    }
+  },
+  "threads": {
+    "99217fab-f2e0-446f-aee2-235ee2637642": {
+      "sessionId": "99217fab-f2e0-446f-aee2-235ee2637642",
+      "from": "2026-08-11T14:30:16.599Z",
+      "to": "2026-08-11T16:56:18.155Z",
+      "eventCount": 221,
+      "segments": [
+        "events/mubit-ai/mubit-cl-bench/2026/08/11/segment-20260811.jsonl"
+      ]
+    },
+    "7e57b36e-7df0-407f-b8a0-453e3db74a33": {
+      "sessionId": "7e57b36e-7df0-407f-b8a0-453e3db74a33",
+      "from": "2026-08-11T15:44:37.980Z",
+      "to": "2026-08-11T20:04:19.479Z",
+      "eventCount": 1848,
+      "segments": [
+        "events/mubit-ai/mubit-cl-bench/2026/08/11/segment-20260811.jsonl"
+      ]
+    }
+  },
+  "actors": {
+    "e1daru": {
+      "from": "2026-08-11T14:30:16.599Z",
+      "to": "2026-08-11T20:04:19.479Z",
+      "eventCount": 2069,
+      "sessions": [
+        "99217fab-f2e0-446f-aee2-235ee2637642",
+        "7e57b36e-7df0-407f-b8a0-453e3db74a33"
+      ],
+      "segments": [
+        "events/mubit-ai/mubit-cl-bench/2026/08/11/segment-20260811.jsonl"
+      ]
+    }
+  }
+}

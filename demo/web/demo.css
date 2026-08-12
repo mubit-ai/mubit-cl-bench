@@ -1,0 +1,146 @@
+/* Demo chrome. Layers on top of viz/style.css — every colour here is one of
+ * that file's validated tokens, so the CVD/contrast work done for the analysis
+ * pages carries over unchanged and light/dark still swap without JS. */
+
+/* mountChrome() inserts this as the first child of <body>, NOT inside <main>.
+ * It therefore gets its own full-width padding; negative margins tuned to
+ * main's 28px padding would clip it off the top of the viewport and overflow
+ * horizontally. Content below is spaced by main's own padding. */
+.chrome {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 10px 28px;
+  background: var(--plane);
+  border-bottom: 1px solid var(--border);
+}
+/* The title block is the only part allowed to shrink; nav, clock and replay
+ * controls keep their intrinsic width. Without min-width:0 and single-line
+ * clamping, a long subtitle wraps into a tall narrow column and pushes the
+ * bar to several times its height. */
+.chrome-l { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1 1 220px; }
+.chrome-l > div:last-child { min-width: 0; }
+.chrome-t { font-size: 14px; font-weight: 600; color: var(--text-1); }
+.chrome-s { font-size: 12px; color: var(--text-2); }
+.chrome-t, .chrome-s { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Below this width the replay controls and nav leave the title block too
+ * little room to be legible; drop the subtitle rather than ellipsing the
+ * title down to two characters. */
+@media (max-width: 1280px) { .chrome-s { display: none; } }
+@media (max-width: 1000px) { .chrome-t { display: none; } }
+.chrome-r { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.home {
+  text-decoration: none; color: var(--text-2); font-size: 18px; line-height: 1;
+  border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px;
+}
+.home:hover { color: var(--text-1); }
+
+.chrome-nav { display: flex; gap: 4px; align-items: center; }
+/* The analysis pages are a second group, not five more demo screens: a rule
+ * and a label separate them, and they stay recessive so the live screens keep
+ * the eye. The label is the first thing to go when the bar gets tight. */
+.chrome-nav .nav-sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 7px; }
+.chrome-nav .nav-lbl {
+  font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--muted); white-space: nowrap; padding-right: 2px;
+}
+.chrome-nav a.alt { color: var(--muted); }
+.chrome-nav a.alt:hover { color: var(--text-1); background: var(--band); }
+@media (max-width: 1180px) { .chrome-nav .nav-lbl { display: none; } }
+.chrome-nav a {
+  text-decoration: none; color: var(--text-2); font-size: 13px;
+  padding: 4px 10px; border-radius: 6px; border: 1px solid transparent;
+}
+.chrome-nav a:hover { color: var(--text-1); background: var(--band); }
+.chrome-nav a.on { color: var(--text-1); border-color: var(--border); background: var(--surface); }
+
+.pill { white-space: nowrap; }
+.pill.ok { color: var(--st-good); border-color: color-mix(in oklab, var(--st-good) 40%, var(--border)); }
+.pill.bad { color: var(--st-critical); border-color: color-mix(in oklab, var(--st-critical) 40%, var(--border)); }
+.chrome-t, .chrome-nav a, .rctl button { white-space: nowrap; }
+.chrome-s { max-width: 46ch; }
+
+.rctl { display: flex; gap: 3px; }
+.rctl button {
+  font: inherit; font-size: 11px; padding: 3px 8px; cursor: pointer;
+  color: var(--text-2); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 6px;
+}
+.rctl button:hover { color: var(--text-1); }
+.rctl button.on { color: var(--text-1); border-color: var(--axis); background: var(--band); }
+
+.mono, .num { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* Two-arm layouts. The arm identity colour is fixed across every page:
+ * memory ON is the Mubit hue, memory OFF is the baseline hue. */
+.arms { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+@media (max-width: 1100px) { .arms { grid-template-columns: 1fr; } }
+
+.arm-h { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.arm-h .dot { width: 10px; height: 10px; border-radius: 3px; background: var(--sw); }
+.arm-h .nm { font-size: 13px; font-weight: 600; color: var(--text-1); }
+.arm-h .sub { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+.on-arm { --sw: var(--sys-mubit); }
+.off-arm { --sw: var(--sys-baseline); }
+
+/* Monospace blocks for prompts, SQL and payloads. */
+.block {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+  background: var(--plane); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 12px; margin: 6px 0; color: var(--text-2); overflow-x: auto;
+}
+.block.mem {
+  border-left: 3px solid var(--sys-mubit);
+  background: color-mix(in oklab, var(--sys-mubit) 7%, var(--plane));
+  color: var(--text-1);
+}
+.block.sql { border-left: 3px solid var(--axis); }
+.block.ans { border-left: 3px solid var(--st-good); }
+.block.fb { color: var(--muted); max-height: 160px; overflow-y: auto; }
+.block.empty { color: var(--muted); font-style: italic; }
+
+.rowlbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 10px; }
+
+/* Question grid used by the race page. */
+.qgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 4px; }
+.qcell {
+  aspect-ratio: 1; border-radius: 6px; border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: var(--text-2); background: var(--plane);
+  font-variant-numeric: tabular-nums;
+}
+.qcell.correct { background: color-mix(in oklab, var(--st-good) 65%, var(--surface)); color: #fff; border-color: transparent; }
+.qcell.wrong { background: color-mix(in oklab, var(--st-critical) 55%, var(--surface)); color: #fff; border-color: transparent; }
+.qcell.running { border-color: var(--sys-mubit); border-style: dashed; color: var(--text-1); }
+.qcell.drift { box-shadow: inset 3px 0 0 var(--st-warning); }
+
+/* Scrolling feeds (ledger, store). */
+.feed { max-height: 72vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+.entry { border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; background: var(--surface); }
+.entry.get { border-left: 3px solid var(--sys-mubit-full); }
+.entry.give { border-left: 3px solid var(--sys-mubit-genai); }
+.entry-h { display: flex; align-items: baseline; gap: 8px; font-size: 11px; color: var(--muted); margin-bottom: 5px; flex-wrap: wrap; }
+.entry-h b { color: var(--text-1); font-size: 12px; }
+.entry-h .sp { margin-left: auto; }
+.tag { font-size: 10px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+.tag.warnt { color: var(--st-warning); border-color: color-mix(in oklab, var(--st-warning) 45%, var(--border)); }
+.tag.stale { color: var(--st-critical); border-color: color-mix(in oklab, var(--st-critical) 45%, var(--border)); }
+.tag.on { color: var(--sys-mubit); border-color: color-mix(in oklab, var(--sys-mubit) 45%, var(--border)); }
+.tag.off { color: var(--sys-baseline); border-color: color-mix(in oklab, var(--sys-baseline) 45%, var(--border)); }
+
+.empty-state { color: var(--muted); font-size: 13px; padding: 26px 0; text-align: center; }
+
+/* Index tiles. */
+.launch { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+.launch a {
+  display: block; text-decoration: none; color: inherit;
+  border: 1px solid var(--border); border-radius: 10px; padding: 16px; background: var(--surface);
+}
+.launch a:hover { border-color: var(--axis); }
+.launch .k { font-size: 15px; font-weight: 600; color: var(--text-1); }
+.launch .d { font-size: 12.5px; color: var(--text-2); margin-top: 5px; line-height: 1.45; }

@@ -1,0 +1,652 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mubit I/O — every recall() and remember() on the wire</title>
+<link rel="stylesheet" href="../../viz/style.css">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* Page-local, and only what demo.css does not already provide. Tokens only —
+ * no raw hex, so light/dark still swap without JS. Series hues are never used
+ * for text; the get/give border colours come from demo.css and are bound to the
+ * OPERATION, so a filter can hide rows but can never repaint a survivor. */
+.fbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; }
+.flbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.fcount { margin-left: auto; font-size: 11.5px; color: var(--muted); }
+
+/* A .rowlbl that can carry tags on the same line. */
+.lrow { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.lrow .tag, .lrow .mono { text-transform: none; letter-spacing: 0; }
+.lrow .mono { color: var(--text-2); font-size: 11.5px; overflow-wrap: anywhere; }
+
+.entry-h .mono { overflow-wrap: anywhere; }
+.entry-h .sp { display: inline-flex; align-items: baseline; gap: 6px; }
+
+.xt {
+  font: inherit; font-size: 11px; cursor: pointer; padding: 2px 8px; margin: 0 0 4px;
+  color: var(--text-2); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 6px;
+}
+.xt:hover { color: var(--text-1); border-color: var(--axis); }
+.clampable { max-height: 9em; overflow: hidden; }
+.clampable.open { max-height: none; }
+
+.ev { border-left: 2px solid var(--grid); padding-left: 10px; margin: 8px 0 0; }
+.ev .entry-h { margin-bottom: 2px; }
+
+/* .flag inside a row: demo.css paints .flag on --surface, which is also the
+ * .entry background, so tint it to keep the callout visible. */
+.entry .flag {
+  margin: 8px 0 0; padding: 9px 12px; font-size: 12.5px; border-radius: 0 8px 8px 0;
+  background: color-mix(in oklab, var(--st-critical) 9%, var(--plane));
+}
+.entry .flag.ok { background: color-mix(in oklab, var(--st-good) 9%, var(--plane)); }
+.entry .flag.warn { background: color-mix(in oklab, var(--st-warning) 11%, var(--plane)); }
+
+.tgs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.capnote { font-size: 11.5px; color: var(--muted); margin: 10px 0 0; }
+.wartline { display: block; margin-top: 8px; color: var(--muted); font-size: 12px; }
+#warts code { font-size: 11.5px; overflow-wrap: anywhere; }
+</style>
+</head><body>
+<main class="wrap">
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="flag warn" id="warts">
+    <b>Shown as measured, warts included.</b>
+    Every row is the literal call recorded by the wire tap in <code>systems/mubit_demo/system.py</code>:
+    what went in, what came back. The database path through <code>systems/mubit</code> is untuned, and
+    three rough edges are on screen on purpose — the recall query is the prompt cut to 300 characters
+    (<code>_build_retrieval_key</code> has no database branch), every lesson is written with
+    <code>metadata.task = "exploitable_poker"</code>, and the lesson text comes from the generic
+    distiller. These are properties of the measured system, not demo bugs: it is the same code path
+    that produced the committed numbers.
+    <span class="wartline" id="wartcount"></span>
+  </div>
+
+  <div class="fbar">
+    <span class="flbl">arm</span>
+    <div class="rctl" id="f-arm">
+      <button type="button" data-v="both" class="on">both</button>
+      <button type="button" data-v="stateful">memory ON</button>
+      <button type="button" data-v="stateless">memory OFF</button>
+    </div>
+    <span class="flbl">op</span>
+    <div class="rctl" id="f-op">
+      <button type="button" data-v="both" class="on">both</button>
+      <button type="button" data-v="recall">recall (gets)</button>
+      <button type="button" data-v="remember">remember (gives)</button>
+    </div>
+    <span class="fcount" id="fcount"></span>
+  </div>
+
+  <div class="feed" id="feed"></div>
+  <div class="empty-state" id="empty"></div>
+  <p class="capnote" id="capnote"></p>
+
+</main>
+<script src="../../viz/chart.js"></script>
+<script src="demo.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  const D = window.D;
+
+  /* ---- constants -------------------------------------------------------- */
+
+  const CAP = 300;         // entries kept in the DOM; the overflow is announced, never silent
+  const CLAMP_CHARS = 340; // longer payloads get an expand toggle rather than a silent cut
+  const CLAMP_LINES = 7;
+  const STICK_PX = 8;      // "the reader is at the top" tolerance
+
+  // The generic distiller in systems/mubit/system.py:
+  //   f"Prior instance feedback: {feedback[:200]}. My action: {action[:200]}"
+  const GEN_PREFIX = "Prior instance feedback: ";
+  const GEN_MID = ". My action: ";
+  const GEN_CUT = 200;
+  // _trim() in systems/mubit_demo/system.py marks anything it shortened for transport.
+  const TRIM_RE = /…\s\[\+\d+ chars\]$/;
+
+  /* ---- dom -------------------------------------------------------------- */
+
+  const tilesEl = document.getElementById("tiles");
+  const wartEl = document.getElementById("wartcount");
+  const feedEl = document.getElementById("feed");
+  const emptyEl = document.getElementById("empty");
+  const capEl = document.getElementById("capnote");
+  const fcountEl = document.getElementById("fcount");
+
+  /* ---- render state ----------------------------------------------------- */
+
+  const filter = { arm: "both", op: "both" };
+  let cursor = 0;              // ledger entries already considered for drawing
+  const live = new Map();      // ledger index -> updater, for entries that mutate after being drawn
+
+  /* ---- small helpers ---------------------------------------------------- */
+
+  function opOf(e) { return e.op === "remember" ? "remember" : "recall"; }
+
+  function tag(text, cls) { return D.el("span", cls ? "tag " + cls : "tag", text); }
+
+  function armTag(arm) {
+    if (arm === "stateful") return tag("memory ON", "on");
+    if (arm === "stateless") return tag("memory OFF", "off");
+    // armOf() in demo.js yields null when the system could not identify its own
+    // arm (_detect_arm returned "unknown"). Say so rather than guessing a lane.
+    const t = tag("arm unattributed", "warnt");
+    t.title = "_detect_arm() in systems/mubit_demo/system.py could not tell which arm this process was.";
+    return t;
+  }
+
+  function stageTag(stage) {
+    if (stage === "post") return tag("post-migration");
+    if (stage === "pre") return tag("pre-migration");
+    return tag("stage —");
+  }
+
+  function relTime(ts) {
+    const t0 = D.state.firstTs;
+    if (t0 == null || ts == null) return "";
+    const s = Math.max(0, Math.round(ts - t0));
+    return "+" + String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+  }
+
+  function fmtInt(n) { return (n == null || Number.isNaN(n)) ? "—" : Number(n).toLocaleString(); }
+
+  function fmtScore(v) {
+    if (v == null) return "—";
+    if (typeof v === "number") return Number.isFinite(v) ? v.toFixed(3) : "—";
+    return String(v);
+  }
+
+  function fmtJson(v) {
+    if (v === undefined) return "";
+    try { return JSON.stringify(v, null, 2); } catch (err) { return String(v); }
+  }
+
+  function fmtInline(v) {
+    if (v === undefined || v === null) return "—";
+    if (typeof v === "string") return v;
+    try { return JSON.stringify(v); } catch (err) { return String(v); }
+  }
+
+  function countOf(e) {
+    if (typeof e.count === "number") return e.count;
+    return (e.evidence || []).length;
+  }
+
+  function latencyText(e) {
+    if (e.latencyMs == null) {
+      return opOf(e) === "remember" ? "awaiting remember.response…" : "latency —";
+    }
+    return D.fmtMs(e.latencyMs);
+  }
+
+  /* The recall kwargs (limit, entry_types) and the remember lesson kwargs are
+   * captured by the reducer onto the per-question slot, not onto the ledger row.
+   * There is exactly one recall and one write per instance per arm — retrieval
+   * happens only at the instance boundary — so this pairing is unambiguous. */
+  function slotOf(e) {
+    if (e.index == null || !e.arm) return null;
+    const q = D.state.questions[e.index];
+    return q ? q[e.arm] : null;
+  }
+
+  /* ---- wart detection --------------------------------------------------- */
+
+  function wireTrimmed(s) { return typeof s === "string" && TRIM_RE.test(s); }
+
+  /** Read the shape of the generic distiller back out of the stored text. */
+  function distilled(content) {
+    const out = { generic: false, fbCut: false, actCut: false, trimmed: wireTrimmed(content) };
+    const s = typeof content === "string" ? content : "";
+    if (!s.startsWith(GEN_PREFIX)) return out;
+    const at = s.lastIndexOf(GEN_MID);
+    if (at < GEN_PREFIX.length) return out;
+    out.generic = true;
+    out.fbCut = (at - GEN_PREFIX.length) === GEN_CUT;
+    out.actCut = (s.length - (at + GEN_MID.length)) === GEN_CUT;
+    return out;
+  }
+
+  const POKER_TASK = "exploitable_poker";
+  function pokerTagged(md) { return !!md && md.task === POKER_TASK; }
+
+  /* ---- payload block with an expand toggle ------------------------------ */
+
+  /* Long text is clamped and expandable, never silently cut: a payload that
+   * ends where the box ends reads as "that is all there was". */
+  function payload(text, cls, emptyMsg) {
+    const wrap = D.el("div");
+    const b = D.el("div", cls ? "block " + cls : "block");
+    const s = text == null ? "" : String(text);
+    if (!s) {
+      b.classList.add("empty");
+      b.textContent = emptyMsg || "empty or absent on the event";
+      wrap.appendChild(b);
+      return wrap;
+    }
+    b.textContent = s; // never innerHTML: this is model output and database content
+    wrap.appendChild(b);
+    const lines = s.split("\n").length;
+    if (s.length > CLAMP_CHARS || lines > CLAMP_LINES) {
+      b.classList.add("clampable");
+      const label = "show all " + fmtInt(s.length) + " chars";
+      const btn = D.el("button", "xt", label);
+      btn.type = "button";
+      btn.addEventListener("click", function () {
+        btn.textContent = b.classList.toggle("open") ? "collapse" : label;
+      });
+      wrap.appendChild(btn);
+    }
+    return wrap;
+  }
+
+  function rowlbl(text) { return D.el("div", "rowlbl lrow", text); }
+
+  /* ---- entries ---------------------------------------------------------- */
+
+  function evidenceNode(ev, i) {
+    const box = D.el("div", "ev");
+    const h = D.el("div", "entry-h");
+    h.appendChild(D.el("b", null, "#" + (i + 1)));
+    h.appendChild(tag("score " + fmtScore(ev && ev.score)));
+    const id = D.el("span", "mono", ev && ev.id ? String(ev.id) : "id absent from the SDK result");
+    h.appendChild(id);
+    if (ev && wireTrimmed(ev.text)) h.appendChild(tag("wire-trimmed for transport", "warnt"));
+    box.appendChild(h);
+    box.appendChild(payload(ev ? ev.text : null));
+    return box;
+  }
+
+  function zeroFlag(e) {
+    const off = e.arm === "stateless";
+    const f = D.el("div", "flag " + (off ? "ok" : "warn"));
+    f.appendChild(D.el("b", null, "0 lessons came back."));
+    let why;
+    if (off) {
+      why =
+        " Expected, and the point of the control: the memory-OFF arm calls recall() exactly like the" +
+        " other arm, but it writes into a Mubit run_id that is discarded before the next question, so" +
+        " there is never anything to find. An empty result here is the control working, not a failure.";
+    } else if (e.index === 0) {
+      why = " Nothing matched — this is the first question, so the store is still empty.";
+    } else {
+      why = " Nothing in the store matched this query, so no lesson was injected into this prompt.";
+    }
+    f.appendChild(document.createTextNode(why));
+    return f;
+  }
+
+  function errorFlag(msg) {
+    const f = D.el("div", "flag");
+    f.appendChild(D.el("b", null, "the call raised: "));
+    f.appendChild(document.createTextNode(String(msg)));
+    return f;
+  }
+
+  function recallBody(node, e) {
+    const req = slotOf(e);
+    const rq = req && req.recall;
+
+    node.appendChild(rowlbl("query string sent"));
+    // A null query does not mean an empty query was sent: demo.js carries the
+    // query over from the paired recall.request, and that pairing needs both an
+    // arm and a question index. Say which happened.
+    node.appendChild(payload(
+      e.query, null,
+      "not captured — the paired recall.request could not be attributed to an arm and question, " +
+      "so there was no query string to carry onto this response."
+    ));
+
+    const kw = D.el("div", "entry-h");
+    const lim = tag("limit " + (rq && rq.limit != null ? fmtInline(rq.limit) : "—"));
+    const et = tag("entry_types " + (rq && rq.entryTypes !== undefined ? fmtInline(rq.entryTypes) : "—"));
+    if (!rq) {
+      lim.title = et.title = "No recall.request was paired with this response for this arm and question.";
+    }
+    kw.appendChild(lim);
+    kw.appendChild(et);
+    const n = countOf(e);
+    kw.appendChild(D.el("b", null, n === 1 ? "1 candidate returned" : fmtInt(n) + " candidates returned"));
+    node.appendChild(kw);
+
+    if (e.error) node.appendChild(errorFlag(e.error));
+    if (n > 0) {
+      node.appendChild(rowlbl("what came back, in wire order"));
+      const ev = e.evidence || [];
+      for (let i = 0; i < ev.length; i++) node.appendChild(evidenceNode(ev[i], i));
+      // count and evidence come from the same payload; if they ever disagree, say so
+      if (typeof e.count === "number" && e.count !== ev.length) {
+        node.appendChild(errorFlag(
+          "count says " + e.count + " but " + ev.length + " candidate rows were carried on the event."
+        ));
+      }
+    } else if (!e.error) {
+      node.appendChild(zeroFlag(e));
+    }
+  }
+
+  function rememberBody(node, e) {
+    const slot = slotOf(e);
+    const wrote = slot && slot.wrote;
+    const d = distilled(e.content);
+
+    const lbl = rowlbl("lesson content, verbatim");
+    if (d.generic) {
+      const t = tag("generic distiller", "warnt");
+      t.title = 'systems/mubit/system.py has no database distiller; _distill_lesson_text falls through to _distill_generic_lesson.';
+      lbl.appendChild(t);
+    }
+    if (d.fbCut) lbl.appendChild(tag("feedback cut at 200 chars", "warnt"));
+    if (d.actCut) lbl.appendChild(tag("action cut at 200 chars", "warnt"));
+    if (d.trimmed) lbl.appendChild(tag("wire-trimmed for transport", "warnt"));
+    node.appendChild(lbl);
+    node.appendChild(payload(e.content, "mem", "no content kwarg was sent with this call."));
+
+    const keyRow = rowlbl("upsert_key");
+    keyRow.appendChild(D.el("span", "mono", e.upsertKey == null ? "—" : String(e.upsertKey)));
+    node.appendChild(keyRow);
+
+    if (wrote) {
+      const kw = D.el("div", "entry-h");
+      kw.appendChild(tag("intent " + fmtInline(wrote.intent)));
+      kw.appendChild(tag("lesson_type " + fmtInline(wrote.lessonType)));
+      kw.appendChild(tag("importance " + fmtInline(wrote.importance)));
+      kw.appendChild(tag("scope " + fmtInline(wrote.scope)));
+      node.appendChild(kw);
+    }
+
+    const mdRow = rowlbl("metadata, in full");
+    if (pokerTagged(e.metadata)) {
+      const t = tag('task = "exploitable_poker"', "warnt");
+      t.title = "Hardcoded in _write_lesson for every task, including this database run.";
+      mdRow.appendChild(t);
+    }
+    node.appendChild(mdRow);
+    node.appendChild(payload(fmtJson(e.metadata || {})));
+
+    if (e.error) node.appendChild(errorFlag(e.error));
+  }
+
+  /* An entry's colour follows its OPERATION and nothing else — not its
+   * position, not the active filter. .get and .give are demo.css's. */
+  function buildEntry(e, i) {
+    const isRecall = opOf(e) === "recall";
+    const node = D.el("div", "entry " + (isRecall ? "get" : "give"));
+
+    const h = D.el("div", "entry-h");
+    h.appendChild(D.el("b", null, isRecall ? "recall()" : "remember()"));
+    h.appendChild(D.el("span", null, isRecall ? "what Mubit was asked" : "what Mubit was given"));
+    h.appendChild(armTag(e.arm));
+    h.appendChild(tag(e.index == null ? "question —" : "Q" + e.index));
+    h.appendChild(stageTag(e.stage));
+
+    const right = D.el("span", "sp");
+    const t = D.el("span", "mono", relTime(e.ts) || "—");
+    if (e.ts != null) {
+      try { t.title = new Date(e.ts * 1000).toLocaleString(); } catch (err) { /* leave untitled */ }
+    }
+    right.appendChild(t);
+    right.appendChild(document.createTextNode("·"));
+    const latEl = D.el("span", "mono", latencyText(e));
+    right.appendChild(latEl);
+    h.appendChild(right);
+    node.appendChild(h);
+
+    if (isRecall) recallBody(node, e);
+    else rememberBody(node, e);
+
+    // A remember row is pushed by remember.request and its latency (and any
+    // error) is patched in later by remember.response. Update in place rather
+    // than redrawing, so an expanded payload stays expanded.
+    if (!isRecall && e.latencyMs == null) {
+      live.set(i, function (cur) {
+        if (!latEl.isConnected) return true; // trimmed out of the feed; stop tracking
+        if (!cur || cur.latencyMs == null) return false;
+        latEl.textContent = D.fmtMs(cur.latencyMs);
+        if (cur.error) node.appendChild(errorFlag(cur.error));
+        return true;
+      });
+    }
+    return node;
+  }
+
+  /* ---- filter ----------------------------------------------------------- */
+
+  function matches(e) {
+    if (filter.op !== "both" && opOf(e) !== filter.op) return false;
+    if (filter.arm !== "both" && e.arm !== filter.arm) return false;
+    return true;
+  }
+
+  function resetFeed() {
+    feedEl.replaceChildren();
+    live.clear();
+    cursor = 0;
+  }
+
+  function wireFilter(id, key) {
+    const box = document.getElementById(id);
+    box.addEventListener("click", function (ev) {
+      const b = ev.target.closest("button");
+      if (!b || !box.contains(b)) return;
+      filter[key] = b.dataset.v;
+      const all = box.querySelectorAll("button");
+      for (let i = 0; i < all.length; i++) all[i].classList.toggle("on", all[i] === b);
+      resetFeed();
+      paint();
+    });
+  }
+
+  /* ---- stats ------------------------------------------------------------ */
+
+  function bucket() { return { n: 0, latSum: 0, latN: 0, lessons: 0, zero: 0, pending: 0, err: 0 }; }
+
+  function stats(ledger) {
+    const out = {
+      recall: { all: bucket(), stateful: bucket(), stateless: bucket(), unknown: bucket() },
+      remember: { all: bucket(), stateful: bucket(), stateless: bucket(), unknown: bucket() },
+    };
+    for (let i = 0; i < ledger.length; i++) {
+      const e = ledger[i];
+      const g = out[opOf(e)];
+      const key = e.arm === "stateful" ? "stateful" : e.arm === "stateless" ? "stateless" : "unknown";
+      const pair = [g.all, g[key]];
+      for (let k = 0; k < 2; k++) {
+        const b = pair[k];
+        b.n++;
+        if (typeof e.latencyMs === "number" && Number.isFinite(e.latencyMs)) {
+          b.latSum += e.latencyMs;
+          b.latN++;
+        } else {
+          b.pending++;
+        }
+        if (e.error) b.err++;
+        if (opOf(e) === "recall") {
+          const c = countOf(e);
+          b.lessons += c;
+          if (c === 0) b.zero++;
+        }
+      }
+    }
+    return out;
+  }
+
+  function mean(b) { return b.latN ? b.latSum / b.latN : null; }
+
+  /* One split per tile, always in the same order and always in the arm's own
+   * identity colour, so ON and OFF mean the same thing on every tile. */
+  function armParts(g, pick) {
+    if (g.all.n === 0) return null;
+    const parts = [["ON " + pick(g.stateful), "on"], ["OFF " + pick(g.stateless), "off"]];
+    if (g.unknown.n > 0) parts.push(["unattributed " + pick(g.unknown), "warnt"]);
+    return parts;
+  }
+
+  function tile(lbl, val, parts, note) {
+    const t = D.el("div", "tile");
+    t.appendChild(D.el("div", "lbl", lbl));
+    t.appendChild(D.el("div", "val", val));
+    if (parts && parts.length) {
+      const sub = D.el("div", "sub tgs");
+      for (let i = 0; i < parts.length; i++) sub.appendChild(tag(parts[i][0], parts[i][1]));
+      t.appendChild(sub);
+    }
+    if (note) t.appendChild(D.el("div", "sub", note));
+    return t;
+  }
+
+  function paintTiles(ledger) {
+    const s = stats(ledger);
+    const rc = s.recall, rm = s.remember;
+    const frag = document.createDocumentFragment();
+
+    const nOf = function (b) { return fmtInt(b.n); };
+    const latOf = function (b) { return D.fmtMs(mean(b)); };
+    const over = function (b) {
+      return b.latN ? "over " + b.latN + " timed call" + (b.latN === 1 ? "" : "s") : null;
+    };
+
+    frag.appendChild(tile(
+      "recall() calls",
+      fmtInt(rc.all.n),
+      armParts(rc, nOf),
+      rc.all.err ? rc.all.err + " raised an error" : null
+    ));
+
+    frag.appendChild(tile(
+      "lessons returned",
+      fmtInt(rc.all.lessons),
+      armParts(rc, function (b) { return fmtInt(b.lessons); }),
+      rc.all.n ? rc.all.zero + " of " + rc.all.n + " recalls came back empty" : null
+    ));
+
+    frag.appendChild(tile(
+      "mean recall latency",
+      D.fmtMs(mean(rc.all)),
+      armParts(rc, latOf),
+      over(rc.all)
+    ));
+
+    frag.appendChild(tile(
+      "remember() calls",
+      fmtInt(rm.all.n),
+      armParts(rm, nOf),
+      rm.all.err ? rm.all.err + " raised an error" : null
+    ));
+
+    frag.appendChild(tile(
+      "mean remember latency",
+      D.fmtMs(mean(rm.all)),
+      armParts(rm, latOf),
+      rm.all.pending
+        ? rm.all.pending + " still awaiting remember.response"
+        : over(rm.all)
+    ));
+
+    tilesEl.replaceChildren(frag);
+  }
+
+  function paintWarts(ledger) {
+    let writes = 0, poker = 0, cut = 0, recalls = 0, at300 = 0;
+    for (let i = 0; i < ledger.length; i++) {
+      const e = ledger[i];
+      if (opOf(e) === "remember") {
+        writes++;
+        if (pokerTagged(e.metadata)) poker++;
+        const d = distilled(e.content);
+        if (d.fbCut || d.actCut) cut++;
+      } else {
+        recalls++;
+        if (typeof e.query === "string" && e.query.length === 300) at300++;
+      }
+    }
+    wartEl.textContent = ledger.length === 0
+      ? "Measured so far: nothing on the wire yet — these counters fill in as the run makes the calls."
+      : "Measured so far: " +
+        poker + " of " + writes + ' writes carry task="exploitable_poker" · ' +
+        cut + " of " + writes + " lesson texts hit the 200-character distiller bound · " +
+        at300 + " of " + recalls + " recall queries are exactly 300 characters long.";
+  }
+
+  /* ---- feed ------------------------------------------------------------- */
+
+  function paintFeed(ledger) {
+    if (ledger.length < cursor) resetFeed(); // the ledger only ever grows; be safe anyway
+
+    const stick = feedEl.scrollTop <= STICK_PX;
+    const prevH = feedEl.scrollHeight;
+    let added = 0;
+    for (let i = cursor; i < ledger.length; i++) {
+      const e = ledger[i];
+      if (!matches(e)) continue;
+      // ascending order, each inserted at the top => newest ends up first
+      feedEl.insertBefore(buildEntry(e, i), feedEl.firstChild);
+      added++;
+    }
+    cursor = ledger.length;
+
+    if (added) {
+      // Never yank the view out from under someone reading: only snap to the
+      // newest row if they were already parked at the top. Otherwise absorb the
+      // height the new rows added, so their row stays exactly where it was.
+      if (stick) feedEl.scrollTop = 0;
+      else feedEl.scrollTop += feedEl.scrollHeight - prevH;
+    }
+
+    const stale = [];
+    live.forEach(function (upd, i) { if (upd(ledger[i])) stale.push(i); });
+    for (let i = 0; i < stale.length; i++) live.delete(stale[i]);
+
+    // Trimming happens at the BOTTOM (the oldest rows), which does not move
+    // anything above it, so no scroll correction is needed.
+    while (feedEl.children.length > CAP) feedEl.removeChild(feedEl.lastChild);
+
+    let total = 0;
+    for (let i = 0; i < ledger.length; i++) if (matches(ledger[i])) total++;
+    const shown = feedEl.children.length;
+
+    if (!ledger.length) {
+      fcountEl.textContent = "";
+      capEl.textContent = "";
+      emptyEl.textContent = !D.state.connected
+        ? "Not connected to the event stream yet."
+        : (D.state.caughtUp
+          ? "Connected. No recall() or remember() has crossed the wire yet."
+          : "Connected — loading the backlog…");
+      emptyEl.style.display = "";
+      return;
+    }
+
+    fcountEl.textContent = total === ledger.length
+      ? fmtInt(total) + (total === 1 ? " wire call" : " wire calls")
+      : fmtInt(total) + " of " + fmtInt(ledger.length) + " wire calls match";
+    capEl.textContent = total > shown
+      ? "Feed capped at " + CAP + " entries. " + fmtInt(total - shown) +
+        " older matching call" + (total - shown === 1 ? " is" : "s are") +
+        " in the recording but not drawn here."
+      : "";
+    emptyEl.textContent = shown ? "" : "No wire call matches this filter.";
+    emptyEl.style.display = shown ? "none" : "";
+  }
+
+  /* ---- paint ------------------------------------------------------------ */
+
+  function paint() {
+    const ledger = (D.state && D.state.ledger) || [];
+    paintTiles(ledger);
+    paintWarts(ledger);
+    paintFeed(ledger);
+  }
+
+  wireFilter("f-arm", "arm");
+  wireFilter("f-op", "op");
+
+  D.mountChrome("Mubit I/O", "every recall() and every remember(), unedited, in the order they happened");
+  D.onRender(paint);
+  paint(); // honest empty state before the first event lands
+  D.connect();
+})();
+</script>
+</body></html>

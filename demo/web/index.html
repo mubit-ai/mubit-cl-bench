@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mubit on CL-Bench — live database demo</title>
+<link rel="stylesheet" href="../../viz/style.css">
+<link rel="stylesheet" href="demo.css">
+<style>
+  .tiles-grid {
+    display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+    gap: 8px; height: calc(100vh - 24px); margin: -28px -28px 0;
+  }
+  .tiles-grid iframe { width: 100%; height: 100%; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  .tile-exit { position: fixed; right: 14px; bottom: 14px; z-index: 30; }
+</style>
+</head>
+<body>
+<main class="wrap" id="root"></main>
+
+<script src="../../viz/chart.js"></script>
+<script src="demo.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  const params = new URLSearchParams(location.search);
+  const tiled = params.get("tile") === "1";
+
+  const PAGES = [
+    ["race.html", "The race", "Memory on versus memory off, question by question. The verdict screen."],
+    ["turn.html", "Turn theatre", "One question on both arms, turn by turn, side by side."],
+    ["ledger.html", "Mubit I/O", "Every recall() and every remember(), unedited, in order."],
+    ["store.html", "Store", "What has accumulated, and how much of it is ever retrieved."],
+  ];
+
+  /* Tiled mode does NOT open its own stream. Browsers cap concurrent
+   * connections per origin at six on HTTP/1.1, and four framed pages each
+   * holding an SSE connection is already close enough to that ceiling that a
+   * fifth would risk starving the static requests. */
+  function renderTiled() {
+    const q = new URLSearchParams(location.search);
+    q.delete("tile");
+    const suffix = q.toString() ? "?" + q.toString() : "";
+    const root = document.getElementById("root");
+    root.innerHTML = "";
+    const grid = D.el("div", "tiles-grid");
+    for (const [href] of PAGES) {
+      const f = document.createElement("iframe");
+      f.src = href + suffix;
+      f.loading = "eager";
+      grid.appendChild(f);
+    }
+    root.appendChild(grid);
+    const exit = D.el("div", "rctl tile-exit");
+    const b = D.el("button", null, "↤ back to index");
+    b.addEventListener("click", () => {
+      const p = new URLSearchParams(location.search);
+      p.delete("tile");
+      location.search = p.toString();
+    });
+    exit.appendChild(b);
+    document.body.appendChild(exit);
+  }
+
+  function renderIndex() {
+    const root = document.getElementById("root");
+    root.innerHTML = "";
+
+    root.appendChild(
+      Object.assign(D.el("p", "sub"), {
+        textContent:
+          "Four views of one run of the real CL-Bench harness on database_exploration: " +
+          "10 questions, a live schema migration, then 10 more — with the stateless baseline " +
+          "running alongside as the control. All four read the same event stream.",
+      })
+    );
+
+    const status = D.el("div", "tiles");
+    status.id = "status";
+    root.appendChild(status);
+
+    const launch = D.el("div", "launch");
+    const q = location.search;
+    for (const [href, name, desc] of PAGES) {
+      const a = document.createElement("a");
+      a.href = href + q;
+      a.appendChild(D.el("div", "k", name));
+      a.appendChild(D.el("div", "d", desc));
+      launch.appendChild(a);
+    }
+    root.appendChild(launch);
+
+    const row = D.el("div", "rctl");
+    row.style.marginTop = "18px";
+    const tb = D.el("button", null, "▦ Tile all four");
+    tb.addEventListener("click", () => {
+      const p = new URLSearchParams(location.search);
+      p.set("tile", "1");
+      location.search = p.toString();
+    });
+    row.appendChild(tb);
+    root.appendChild(row);
+
+    const flag = D.el("div", "flag");
+    flag.style.marginTop = "20px";
+    flag.appendChild(
+      Object.assign(D.el("span"), {
+        textContent:
+          "mubit_demo is systems/mubit with a pass-through wire tap and no behavioural difference — " +
+          "the same retrieval key, lesson text and metadata that produced the committed artifacts, " +
+          "warts included. Every score comes from the harness's own trace files; nothing here " +
+          "recomputes a reward.",
+      })
+    );
+    root.appendChild(flag);
+  }
+
+  function tile(label, value, sub) {
+    const t = D.el("div", "tile");
+    t.appendChild(D.el("div", "lbl", label));
+    t.appendChild(D.el("div", "val", value));
+    if (sub) t.appendChild(D.el("div", "sub", sub));
+    return t;
+  }
+
+  function paintStatus(state) {
+    const host = document.getElementById("status");
+    if (!host) return;
+    host.innerHTML = "";
+    const cfg = state.config;
+    if (!cfg) {
+      host.appendChild(tile("Run", "waiting", "no run.config event yet"));
+      return;
+    }
+    const g = D.gain();
+    const total = cfg.questions != null ? cfg.questions : 20;
+    // The run id is a timestamp, not a headline — it wraps to three lines at
+    // hero size and dwarfs the numbers that matter.
+    const runTile = tile("Run", cfg.run_group_id || "—", `${cfg.system || "—"} · ${cfg.model || "—"}`);
+    const v = runTile.querySelector(".val");
+    if (v) {
+      v.style.fontSize = "15px";
+      v.style.fontWeight = "500";
+      v.style.wordBreak = "break-all";
+    }
+    host.appendChild(runTile);
+    host.appendChild(
+      tile(
+        "Memory ON",
+        `${state.arms.stateful.done} / ${total}`,
+        state.arms.stateful.current != null ? `on question ${state.arms.stateful.current + 1}` : "not started"
+      )
+    );
+    host.appendChild(
+      tile(
+        "Memory OFF",
+        `${state.arms.stateless.done} / ${total}`,
+        state.arms.stateless.current != null ? `on question ${state.arms.stateless.current + 1}` : "not started"
+      )
+    );
+    host.appendChild(
+      tile(
+        "Normalized gain",
+        g ? D.pct(g.g) : "—",
+        g ? `over ${g.n} paired question${g.n === 1 ? "" : "s"}` : "needs one question scored on both arms"
+      )
+    );
+    host.appendChild(
+      tile("Lessons stored", String(state.store.length), `${state.ledger.length} Mubit calls so far`)
+    );
+  }
+
+  if (tiled) {
+    renderTiled();
+  } else {
+    renderIndex();
+    D.mountChrome("Live database demo", "Mubit on CL-Bench · database_exploration");
+    D.onRender(paintStatus);
+    D.connect();
+  }
+})();
+</script>
+</body>
+</html>

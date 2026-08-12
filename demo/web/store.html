@@ -1,0 +1,579 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Memory store — live database demo</title>
+<link rel="stylesheet" href="../../viz/style.css">
+<link rel="stylesheet" href="demo.css">
+</head><body>
+<main class="wrap">
+
+  <section class="act">
+    <h2>What is in memory</h2>
+    <p class="lede">The <b>stateful arm's</b> store, and only that. It accumulates because the memory-ON
+      arm writes into one Mubit <code>run_id</code> that persists across questions. The control calls
+      <code>remember()</code> just as often, into a fresh <code>run_id</code> discarded before the next
+      question — so it has no store, by design. <span id="runid" class="mono"></span></p>
+    <div class="flag warn" id="caveat"></div>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+  <section class="act">
+    <h2>Accumulation</h2>
+    <div id="growth"></div>
+    <div id="volume"></div>
+  </section>
+
+  <section class="act">
+    <h2>Use</h2>
+    <div id="dist"></div>
+  </section>
+
+  <section class="act">
+    <h2>Entries</h2>
+    <p class="lede">Newest first, verbatim off the wire: the distilled lesson text, the upsert key and the
+      metadata dict as written — including the known wart, <code>task</code> hard-coded to
+      <code>exploitable_poker</code> whatever task is running.</p>
+    <div class="feed" id="feed"></div>
+  </section>
+
+</main>
+<script src="../../viz/chart.js"></script>
+<script src="demo.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var S = D.state;
+
+  // --------------------------------------------------------------- wire ---
+  // Two facts the shared reducer does not keep, read straight off the envelope
+  // rather than re-reduced: the Mubit run_id this store is scoped to, and
+  // whether the migration notice has actually been seen on the wire.
+  var runIds = [];
+  var sawStageChange = false;
+
+  D.on("*", function (ev) {
+    if (ev.type === "stage.change") sawStageChange = true;
+    if (ev.arm !== "stateful") return;
+    var rid = ev.mubit_run_id || (ev.payload && ev.payload.mubit_run_id);
+    if (rid && runIds.indexOf(String(rid)) < 0) runIds.push(String(rid));
+  });
+
+  // ------------------------------------------------------------ derived ---
+  function migrated() {
+    if (sawStageChange) return true;
+    var i;
+    for (i = 0; i < S.store.length; i++) if (S.store[i].stage === "post") return true;
+    for (i = 0; i < S.questions.length; i++) {
+      var q = S.questions[i];
+      if (q.index >= S.driftIndex && (q.stateful.started || q.stateless.started)) return true;
+    }
+    return false;
+  }
+
+  function countWithId() {
+    var n = 0;
+    for (var i = 0; i < S.store.length; i++) if (S.store[i].id != null) n++;
+    return n;
+  }
+
+  function countRetrieved() {
+    var n = 0;
+    for (var i = 0; i < S.store.length; i++) if ((S.store[i].retrieved || 0) > 0) n++;
+    return n;
+  }
+
+  function totalRetrieved() {
+    var t = 0;
+    for (var i = 0; i < S.store.length; i++) t += S.store[i].retrieved || 0;
+    return t;
+  }
+
+  /* The one place attribution can still go wrong, measured rather than assumed.
+   *
+   * demo.js joins a recall result to a write on normText() — whitespace
+   * collapsed, trimmed, FIRST 200 CHARACTERS. On this task the lesson is
+   * "Prior instance feedback: {feedback[:200]}. My action: {action[:200]}", so
+   * once the feedback runs past ~175 characters the agent's action falls
+   * outside the window entirely and cannot disambiguate two entries. When two
+   * entries do share a key, Array.find() credits the earliest.
+   *
+   * So rather than hedge about it in prose, count it: this returns the store
+   * indices that share a key with some other entry. Empty is the honest
+   * all-clear, and it is empty for as long as the feedback keeps differing. */
+  function normKey(s) {
+    return String(s == null ? "" : s).replace(/\s+/g, " ").trim().slice(0, 200);
+  }
+
+  function collisions() {
+    var seen = {}, dup = {}, i, k;
+    for (i = 0; i < S.store.length; i++) {
+      k = normKey(S.store[i].text);
+      if (!k) continue;
+      if (seen[k] == null) seen[k] = i; else { dup[seen[k]] = 1; dup[i] = 1; }
+    }
+    var out = [];
+    for (i = 0; i < S.store.length; i++) if (dup[i]) out.push(i);
+    return out;
+  }
+
+  // Recalls issued by the stateful arm, from the shared ledger. Retrieval
+  // VOLUME — deliberately not the same measurement as per-entry attribution.
+  function statefulRecalls() {
+    var out = [];
+    for (var i = 0; i < S.ledger.length; i++) {
+      var r = S.ledger[i];
+      if (r.op !== "recall" || r.arm !== "stateful" || r.index == null) continue;
+      out.push(r);
+    }
+    return out;
+  }
+
+  /* Highest question index the stateful arm has been seen at. Both plots share
+   * it so the two x-axes line up and can be read against each other; that is
+   * the whole reason they are stacked rather than merged onto one y-scale. */
+  function horizon() {
+    var last = -1, i;
+    for (i = 0; i < S.store.length; i++) {
+      if (S.store[i].writtenAt != null && S.store[i].writtenAt > last) last = S.store[i].writtenAt;
+    }
+    var cur = S.arms.stateful.current;
+    if (cur != null && cur > last) last = cur;
+    var rc = statefulRecalls();
+    for (i = 0; i < rc.length; i++) if (rc[i].index > last) last = rc[i].index;
+    return last;
+  }
+
+  // --------------------------------------------------------------- util ---
+  var int = function (v) { return v == null || Number.isNaN(v) ? "—" : String(Math.round(v)); };
+  var byId = function (id) { return document.getElementById(id); };
+  var plural = function (n, one, many) { return n === 1 ? one : many; };
+
+  function ticksTo(top, wanted) {
+    var step = Math.max(1, Math.ceil(top / wanted));
+    var out = [];
+    for (var v = 0; v <= top; v += step) out.push(v);
+    return out;
+  }
+
+  function emptyCard(host, title, sub, msg) {
+    var c = D.el("div", "card");
+    c.appendChild(D.el("h3", null, title));
+    if (sub) c.appendChild(D.el("p", "sub", sub));
+    c.appendChild(D.el("div", "empty-state", msg));
+    host.appendChild(c);
+  }
+
+  // Table-view twins are re-created on every repaint; remember which the
+  // viewer had open so a live update does not close them under their hand.
+  var openTV = {};
+  function keepOpen(card, key) {
+    if (!card) return;
+    var d = card.querySelector("details.tv");
+    if (!d) return;
+    if (openTV[key]) d.open = true;
+    d.addEventListener("toggle", function () { openTV[key] = d.open; });
+  }
+
+  // --------------------------------------------------------------- head ---
+  function paintHead(mig) {
+    var rid = byId("runid");
+    if (runIds.length === 0) rid.textContent = "run_id not seen on the wire yet.";
+    else if (runIds.length === 1) rid.textContent = "run_id " + runIds[0];
+    else rid.textContent = "run_id " + runIds.join(" + ") +
+      " — more than one stateful run_id has appeared, so this view merges them.";
+
+    var n = S.store.length;
+    var dup = collisions();
+    var c = byId("caveat");
+    c.textContent = "";
+
+    var txt = "An entry cannot know its own Mubit id at write time — mubit calls remember(wait=False), so the " +
+      "ack is a job id, not an entry id. The join that does hold is the lesson text, which comes back " +
+      "unchanged as evidence, so a write is matched to a recall on its text and adopts the real id the first " +
+      "time it returns. Hence: an id appears only after a retrieval, and a zero means never retrieved.";
+    c.appendChild(D.el("b", null, "Retrievals are attributed by lesson text. "));
+    c.appendChild(document.createTextNode(txt));
+
+    // The residual risk, measured on the entries actually in the store.
+    var risk = D.el("div", null, null);
+    risk.style.marginTop = "8px";
+    if (n === 0) {
+      risk.textContent = "Nothing has been written yet.";
+    } else if (dup.length === 0) {
+      risk.textContent = "Two entries with the same text would be indistinguishable, and the earlier one would " +
+        "take the credit. Right now no two of the " + n + " " + plural(n, "entry", "entries") +
+        " share an attribution key, so nothing below is affected.";
+    } else {
+      risk.textContent = dup.length + " entries share an attribution key with another entry, so a retrieval " +
+        "among them is credited to whichever was written first. They are flagged in the list below.";
+    }
+    c.appendChild(risk);
+    c.className = dup.length ? "flag warn" : "flag ok";
+  }
+
+  // -------------------------------------------------------------- tiles ---
+  function tile(host, lbl, val, sub) {
+    var d = D.el("div", "tile");
+    d.appendChild(D.el("div", "lbl", lbl));
+    d.appendChild(D.el("div", "val num", val));
+    d.appendChild(D.el("div", "sub", sub));
+    host.appendChild(d);
+  }
+
+  function paintTiles(mig) {
+    var host = byId("tiles");
+    host.textContent = "";
+
+    var keys = {}, nKeys = 0, noKey = 0, used = 0, pre = 0, unknownStage = 0;
+    for (var i = 0; i < S.store.length; i++) {
+      var e = S.store[i];
+      if (e.upsertKey) { if (!keys[e.upsertKey]) { keys[e.upsertKey] = 1; nKeys++; } } else noKey++;
+      if ((e.retrieved || 0) > 0) used++;
+      if (e.stage === "pre") pre++;
+      else if (e.stage !== "post") unknownStage++;
+    }
+    var n = S.store.length;
+
+    tile(host, "Entries written", int(n),
+      n ? "remember() calls by the memory-ON arm" : "nothing on the wire yet");
+
+    tile(host, "Distinct upsert keys", int(nKeys),
+      "upsert_key is lesson:{instance_id} — unique per question, so writes never merge" +
+      (noKey ? " · " + noKey + " arrived with no key" : ""));
+
+    tile(host, "Retrieved ≥ once", int(used),
+      n ? "came back from a recall at least once" : "no entries yet");
+
+    tile(host, "Never retrieved", int(n - used),
+      n ? "written, then never returned by any recall" : "no entries yet");
+
+    tile(host, "Describe the old schema", mig ? int(pre) : "—",
+      mig ? "written before the migration" + (unknownStage ? " · " + unknownStage + " with no stage" : "")
+          : "migration lands before question " + S.driftIndex + " — not reached yet");
+  }
+
+  // ------------------------------------------------------------- growth ---
+  function paintGrowth(mig) {
+    var host = byId("growth");
+    host.textContent = "";
+
+    var off = 0, i, e;
+    for (i = 0; i < S.store.length; i++) if (S.store[i].writtenAt == null) off++;
+    var lastQ = horizon();
+
+    if (lastQ < 0) {
+      emptyCard(host, "Store size after each question",
+        "Entries held by the stateful arm, cumulative.",
+        "Nothing on the wire yet — the curve starts at the first question.");
+      return;
+    }
+
+    var per = [];
+    for (i = 0; i <= lastQ; i++) per.push(0);
+    for (i = 0; i < S.store.length; i++) {
+      e = S.store[i];
+      if (e.writtenAt != null && e.writtenAt >= 0 && e.writtenAt <= lastQ) per[e.writtenAt]++;
+    }
+    var run = 0, pts = [];
+    for (i = 0; i <= lastQ; i++) { run += per[i]; pts.push([i, run]); }
+
+    var xd1 = Math.max(lastQ, 1);
+    var yTop = Math.max(2, run + 1);
+    var boundary = S.driftIndex - 0.5;
+    var showMig = boundary >= 0 && boundary <= xd1;
+
+    var note = "One point per question; the value is how many entries the store holds after it. The line only " +
+      "ever rises — upsert_key is lesson:{instance_id}, unique per question, so a write never replaces an " +
+      "earlier entry. Flat segments are questions where no lesson was written.";
+    if (run === 0) note += " Nothing has been written yet, so the curve sits flat on zero.";
+    if (!showMig) note += " The migration lands before question " + S.driftIndex + " and has not been reached yet.";
+    if (off) note += " " + off + " " + plural(off, "entry", "entries") + " arrived with no question index and " +
+      plural(off, "is", "are") + " not on this curve.";
+
+    var card = V.lines(host, {
+      title: "Store size after each question",
+      subtitle: "Entries held by the stateful arm, cumulative, with the migration marked.",
+      width: 880,
+      height: 300,
+      x: { label: "Question index", domain: [0, xd1], ticks: ticksTo(xd1, 12), format: int },
+      y: { label: "Entries in store", domain: [0, yTop], ticks: ticksTo(yTop, 5), format: int },
+      xBands: showMig ? [{ from: boundary, to: xd1, label: "post-migration" }] : [],
+      xRules: showMig ? [{ at: boundary, label: "migration" }] : [],
+      series: [{
+        id: "size",
+        name: "Entries in store",
+        color: "--sys-mubit",
+        values: pts,
+        step: true
+      }],
+      note: note
+    });
+    keepOpen(card, "growth");
+  }
+
+  // ------------------------------------------------------------- volume ---
+  function paintVolume() {
+    var host = byId("volume");
+    host.textContent = "";
+
+    var recalls = statefulRecalls();
+    if (!recalls.length) {
+      emptyCard(host, "Evidence rows returned per question",
+        "A separate plot on its own scale — never a second axis on the curve above.",
+        "The stateful arm has not called recall() yet.");
+      return;
+    }
+
+    var by = {}, order = [], errs = 0, evRows = 0, i;
+    for (i = 0; i < recalls.length; i++) {
+      var r = recalls[i];
+      if (r.error) errs++;
+      var rows = r.count != null ? r.count : (r.evidence ? r.evidence.length : 0);
+      evRows += r.evidence ? r.evidence.length : 0;
+      if (by[r.index] == null) { by[r.index] = 0; order.push(r.index); }
+      by[r.index] += rows;
+    }
+    order.sort(function (a, b) { return a - b; });
+    var pts = [], maxY = 0;
+    for (i = 0; i < order.length; i++) {
+      var v = by[order[i]];
+      if (v > maxY) maxY = v;
+      pts.push([order[i], v]);
+    }
+
+    var xd1 = Math.max(horizon(), 1);
+    var yTop = Math.max(2, maxY + 1);
+    var boundary = S.driftIndex - 0.5;
+    var showMig = boundary >= 0 && boundary <= xd1;
+
+    var attributed = totalRetrieved();
+    var note = "Deliberately a second plot rather than a second y-axis on the growth curve: these are different " +
+      "quantities and sharing a frame would invent a relationship between them. Recall runs once at the start " +
+      "of each question; this is how many evidence rows Mubit handed back, counted at the wire.";
+    if (evRows > attributed) {
+      note += " Of " + evRows + " rows handed to this arm, " + attributed + " " +
+        plural(attributed, "was", "were") + " attributed to an entry written in this run; the other " +
+        (evRows - attributed) + " matched nothing in this store, which is what a recall reaching beyond this " +
+        "run's own writes looks like.";
+    } else if (attributed > evRows) {
+      note += " There are " + attributed + " attributed retrievals but only " + evRows + " rows were handed to " +
+        "this arm. The reducer attributes evidence from every recall on the stream, including the stateless " +
+        "control's, so the control's own recalls can be crediting entries in this store.";
+    } else if (evRows > 0) {
+      note += " All " + evRows + " rows handed to this arm were attributed to an entry written in this run.";
+    }
+    if (errs) note += " " + errs + " recall " + plural(errs, "call", "calls") + " returned an error and " +
+      plural(errs, "counts", "count") + " as zero rows here.";
+
+    var card = V.lines(host, {
+      title: "Evidence rows returned per question",
+      subtitle: "What Mubit gave the stateful arm back, measured on the wire.",
+      width: 880,
+      height: 240,
+      x: { label: "Question index", domain: [0, xd1], ticks: ticksTo(xd1, 12), format: int },
+      y: { label: "Evidence rows", domain: [0, yTop], ticks: ticksTo(yTop, 5), format: int },
+      xBands: showMig ? [{ from: boundary, to: xd1, label: "post-migration" }] : [],
+      xRules: showMig ? [{ at: boundary, label: "migration" }] : [],
+      series: [{
+        id: "rows",
+        name: "Evidence rows returned",
+        color: "--sys-mubit-full",
+        values: pts,
+        step: true
+      }],
+      note: note
+    });
+    keepOpen(card, "volume");
+  }
+
+  // --------------------------------------------------------------- dist ---
+  function paintDist(mig) {
+    var host = byId("dist");
+    host.textContent = "";
+
+    if (!S.store.length) {
+      emptyCard(host, "Retrievals per entry",
+        "How many times each stored entry has come back from a recall.",
+        "Nothing written yet, so there is nothing to retrieve.");
+      return;
+    }
+
+    var maxR = 0, zero = 0, i;
+    for (i = 0; i < S.store.length; i++) {
+      var v = S.store[i].retrieved || 0;
+      if (v > maxR) maxR = v;
+      if (v === 0) zero++;
+    }
+
+    var groups = [];
+    for (i = 0; i < S.store.length; i++) {
+      var e = S.store[i];
+      groups.push({
+        label: e.writtenAt == null ? "q ?" : "q" + e.writtenAt,
+        sublabel: e.stage === "pre" ? "pre" : e.stage === "post" ? "post" : "stage ?",
+        bars: [{ name: "retrievals", color: "--sys-mubit", value: e.retrieved || 0 }]
+      });
+    }
+
+    var note = "One bar per entry, in write order, so the store's whole history reads left to right. " +
+      "Because upsert_key is lesson:{instance_id} and unique per question, entries never merge into one " +
+      "another: the store accumulates and nothing converges. " +
+      zero + " of " + S.store.length + " " + plural(zero, "entry has", "entries have") +
+      " never been returned by a recall.";
+    note += " Counts are attributed on the first 200 characters of the normalised lesson text. The lesson is " +
+      "\"Prior instance feedback: {feedback}. My action: {action}\", so once a feedback string runs past about " +
+      "175 characters the action falls outside that window and stops being able to tell two entries apart — " +
+      "which is what the collision check at the top of the page is watching for.";
+
+    var yTop = Math.max(1, maxR + 1);
+    var card = V.bars(host, {
+      title: "Retrievals per entry",
+      subtitle: "How many times each stored entry has come back from a recall.",
+      width: 880,
+      height: 280,
+      y: { label: "Times retrieved", domain: [0, yTop], ticks: ticksTo(yTop, 5), format: int },
+      groups: groups,
+      note: note
+    });
+    keepOpen(card, "dist");
+  }
+
+  // --------------------------------------------------------------- feed ---
+  function rowBlock(parent, label, text, cls) {
+    parent.appendChild(D.el("div", "rowlbl", label));
+    if (text == null || text === "") {
+      parent.appendChild(D.el("div", "block empty", "— nothing on the wire —"));
+      return;
+    }
+    parent.appendChild(D.el("div", cls || "block", text));
+  }
+
+  function fmtMeta(md) {
+    if (md == null || typeof md !== "object") return null;
+    var ks = Object.keys(md);
+    if (!ks.length) return "{}";
+    var lines = [];
+    for (var i = 0; i < ks.length; i++) {
+      var v = md[ks[i]];
+      var out;
+      if (v == null) out = "null";
+      else if (typeof v === "object") { try { out = JSON.stringify(v); } catch (err) { out = String(v); } }
+      else out = String(v);
+      lines.push(ks[i] + ": " + out);
+    }
+    return lines.join("\n");
+  }
+
+  function tag(host, cls, text, title) {
+    var t = D.el("span", cls, text);
+    if (title) t.setAttribute("title", title);
+    host.appendChild(t);
+    return t;
+  }
+
+  function paintFeed(mig) {
+    var feed = byId("feed");
+    var top = feed.scrollTop;
+    feed.textContent = "";
+
+    if (!S.store.length) {
+      feed.appendChild(D.el("div", "empty-state",
+        "No lesson written yet. The stateful arm writes one at the end of each question."));
+      return;
+    }
+
+    var dupSet = {};
+    var dup = collisions();
+    for (var d = 0; d < dup.length; d++) dupSet[dup[d]] = 1;
+
+    for (var i = S.store.length - 1; i >= 0; i--) {
+      var e = S.store[i];
+      var card = D.el("div", "entry");
+
+      var h = D.el("div", "entry-h");
+      h.appendChild(D.el("b", null, "write #" + (i + 1)));
+      h.appendChild(D.el("span", null, e.writtenAt == null ? "question —" : "question " + e.writtenAt));
+
+      if (e.stage === "pre" && mig) {
+        tag(h, "tag stale", "written pre-migration",
+          "Written before the migration, so it describes a schema that no longer exists. That is a claim " +
+          "about when it was written, not a measurement that its content is wrong.");
+      } else if (e.stage === "pre") {
+        tag(h, "tag", "pre-migration", "Written before the migration boundary.");
+      } else if (e.stage === "post") {
+        tag(h, "tag", "post-migration", "Written after the migration boundary.");
+      } else {
+        tag(h, "tag", "stage unknown", "The event carried no stage field.");
+      }
+
+      if (dupSet[i]) {
+        tag(h, "tag warnt", "shares text key",
+          "Another entry's lesson text matches this one over the first 200 normalised characters. A retrieval " +
+          "of either is credited to whichever was written first.");
+      }
+
+      h.appendChild(D.el("span", "sp"));
+
+      if (e.id != null) {
+        tag(h, "tag", "id " + e.id,
+          "The entry id Mubit returned with this lesson the first time it came back from a recall.");
+      } else {
+        tag(h, "tag", "id not yet retrieved",
+          "The write was queued, so Mubit acked with a job id rather than an entry id. The entry id is " +
+          "adopted the first time this lesson comes back from a recall.");
+      }
+
+      if (e.lastScore != null && !Number.isNaN(e.lastScore)) {
+        tag(h, "tag", "score " + Number(e.lastScore).toFixed(3),
+          "Similarity score from the most recent recall that returned this entry.");
+      }
+
+      var r = e.retrieved || 0;
+      tag(h, "tag", r === 0 ? "never retrieved" : r === 1 ? "retrieved once" : "retrieved " + r + "×",
+        "Times a recall result was attributed to this entry, by lesson text or by adopted id.");
+
+      card.appendChild(h);
+      rowBlock(card, "lesson", e.text, "block mem");
+      rowBlock(card, "upsert key", e.upsertKey);
+      rowBlock(card, "metadata", fmtMeta(e.metadata));
+      feed.appendChild(card);
+    }
+
+    feed.scrollTop = top;
+  }
+
+  // -------------------------------------------------------------- paint ---
+  // Charts and the feed are rebuilt only when their inputs actually change:
+  // a repaint on every frame would tear tooltips and table views out from
+  // under the viewer's cursor during a burst of events.
+  var lastChartSig = null;
+  var lastFeedSig = null;
+
+  function paint() {
+    var mig = migrated();
+    paintHead(mig);
+    paintTiles(mig);
+
+    var chartSig = [S.store.length, S.ledger.length, S.driftIndex, mig,
+      totalRetrieved(), S.arms.stateful.current].join("|");
+    if (chartSig !== lastChartSig) {
+      lastChartSig = chartSig;
+      paintGrowth(mig);
+      paintVolume();
+      paintDist(mig);
+    }
+
+    var feedSig = [S.store.length, totalRetrieved(), mig, countWithId()].join("|");
+    if (feedSig !== lastFeedSig) {
+      lastFeedSig = feedSig;
+      paintFeed(mig);
+    }
+  }
+
+  D.mountChrome("Store", "What the stateful arm has accumulated, and whether any of it is used");
+  D.onRender(paint);
+  D.render();
+  D.connect();
+})();
+</script>
+</body></html>
