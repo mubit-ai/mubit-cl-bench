@@ -70,12 +70,12 @@
    {
     "task": "Codebase Adaptation",
     "mubit_model": "gpt-5",
-    "Mubit": -0.036,
+    "Mubit": -0.018,
     "ICL": 0.036,
     "Mem0": 0.157,
     "ACE": 0.083,
     "Claude-Code": 0.038,
-    "note": "Mubit neutral (two distiller configs). mem0 +0.157 is n.s. (run sigma 0.129); only ACE clears 2-sigma. Field clusters near zero."
+    "note": "v3.2 (full-episode distiller, per-issue accumulation, per-turn retrieval, repo filter): recovery on hard issues DOUBLED (+2.73 vs +1.34 summed) but easy-issue regressions persist; net -0.018. v1/v2 (-0.035) ran the generic distiller due to a continuation-prompt detection bug. Baseline flips whole issues between identical configs (e.g. 0.70->0.00); mem0's +0.157 is n.s. (sigma 0.129)."
    }
   ]
  },

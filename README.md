@@ -19,7 +19,7 @@ The CL-Bench paper's headline finding: **dedicated memory systems (Mem0, ACE, IC
 | **Blind Spectrum Monitoring** | 71% best-run IoU; 31.8% g_b (structured registry) | ICL 29.4% g_b | **Leads** |
 | **Database Exploration** | +32% drift adaptation post-migration | Mem0 *negative* on drift | **Only system that adapts** |
 | **Exploitable Poker** | +10.8% (session-stateful + opponent observations) | (paper values unverifiable — see FINDINGS §7.3) | Positive |
-| **Codebase Adaptation** | −0.036 (gpt-5, two distiller configs) | mem0 +0.157 (n.s. at 2σ, run σ 0.129) | Neutral — like most of the field |
+| **Codebase Adaptation** | −0.018 (gpt-5, v3.2 forensic adapter) | mem0 +0.157 (n.s. at 2σ, run σ 0.129) | Neutral — like most of the field |
 
 **The pattern: Mubit wins exactly where continual learning has real signal to accumulate** (forecast transfer, spectrum registry, schema-drift survival, opponent modeling) **and is neutral where the entire field — including the paper's best systems — is statistically at zero** (codebase, cohort). Mubit's cohort runs are the first ever to post an absolutely-positive stateful score.
 
@@ -142,16 +142,20 @@ Poker is the hardest task for memory — cards are dealt randomly each hand. Aft
 
 The breakthrough combined two mechanisms: (1) implicit session memory — the model maintains conversation history across hands, calibrating its play over the session (like ICL), and (2) explicit opponent intelligence from Mubit — behavior patterns the model can't see in its own history. 47/120 hands positive, only 18 negative.
 
-### Codebase Adaptation: neutral (−0.036), like most of the field
+### Codebase Adaptation: neutral (−0.018 after three adapter iterations)
 
-Two GPT-5 configurations (generic distiller, then an operational-knowledge distiller extracting test commands and repo layout):
+Three GPT-5 configurations, each diagnosed from per-issue forensics:
 
-| Config | Baseline | Stateful | Gain |
-|---|---|---|---|
-| v1 (generic lessons) | 0.468 | 0.433 | −0.035 |
-| v2 (operational lessons, repo-keyed) | 0.551 | 0.516 | −0.036 |
+| Config | Baseline | Stateful | Gain | Hard-issue recovery |
+|---|---|---|---|---|
+| v1/v2 (both secretly ran the generic distiller — see below) | 0.468 / 0.551 | 0.433 / 0.516 | −0.035 / −0.036 | +1.34 |
+| **v3.2** (full-episode root-cause distiller, per-issue accumulation, per-turn retrieval, repo filter) | 0.454 | 0.436 | **−0.018** | **+2.73** |
 
-v2's runs tell the real story: 3 of 5 beat baseline (best +0.10), but one bad early-lesson cascade (run 1: 0.320) drags the mean. The task's baseline itself moved ±0.08 between identical configs — the noise floor most of the paper's systems sit inside. A gemini-3.7-flash configuration (weakest baseline, most headroom) is in flight.
+**The v1/v2 correction:** smoke-trace forensics revealed both earlier runs distilled from the final turn's 53-char continuation prompt, so the codebase distiller never executed — v1 and v2 were the same system, explaining their identical scores.
+
+**What v3.2 changed:** recovery on hard (zero-baseline) issues *doubled* — tablib-547: 0→0.58, tenacity-603: 0→0.66, tablib-594: 0→0.55 — proving the richer lessons transfer. But regressions on already-solvable issues persisted (tenacity-614: 0.78→0.17), keeping the net near zero.
+
+**Why we report neutral as the honest verdict:** the task's baseline flips whole issues between identical configs (tablib-547: 0.70→0.00; tenacity-603: 0.82→0.00 across our three GPT-5 baselines) — a noise floor larger than most claimed gains. In the paper's own artifacts only ACE (+0.083) clears 2σ; mem0's +0.157 does not.
 
 ---
 
