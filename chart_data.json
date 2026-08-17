@@ -18,55 +18,64 @@
   "y_axis": "Raw Gain (r_sf - r_sl)",
   "data": [
    {
-    "task": "Blind Spectrum Monitoring",
-    "Mubit": 53.7,
-    "Mubit_best_run": 71.1,
-    "ICL": 29.4,
-    "Mem0": 15.6,
-    "ACE": 0.0
-   },
-   {
-    "task": "Database Exploration\n(post-migration gain)",
-    "Mubit": 14.8,
-    "ICL": 13.6,
-    "Mem0": -10.0,
-    "ACE": -5.0,
-    "note": "Post-schema-migration normalized gain. Mem0/ACE degrade from stale facts."
-   },
-   {
-    "task": "Exploitable Poker",
-    "Mubit": 10.8,
-    "ICL": 20.1,
-    "Mem0": 20.2,
-    "ACE": 8.6,
-    "note": "Mubit: session-stateful + opponent observations (gemini-3.5-flash); competitor values unverifiable (paper artifacts duplicate them across tasks \u2014 see FINDINGS.md 7.3)"
-   },
-   {
     "task": "Sales Prediction",
-    "Mubit (gpt-5)": 0.401,
-    "ICL (GPT-5.4)": 0.303,
-    "Mem0 (GPT-5.4)": 0.255,
-    "ACE (GPT-5.4)": 0.076,
-    "Claude-Code (Sonnet 4.6)": 0.378,
-    "note": "Mubit SOTA on raw gain. Baseline 0.200 -> stateful 0.601 (std 0.009; runs 0.594-0.616). All 5 runs beat baseline."
+    "mubit_model": "gpt-5",
+    "Mubit": 0.401,
+    "ICL": 0.303,
+    "Mem0": 0.255,
+    "ACE": 0.076,
+    "Claude-Code": 0.378,
+    "note": "Mubit SOTA on raw gain. Baseline 0.200 -> stateful 0.601 (std 0.009). All 5 runs beat baseline. Claude-Code = claude-code-sonnet-4.6 (paper best)."
    },
    {
     "task": "Cohort Studies",
-    "Mubit (gemini-3.7-flash)": 0.021,
-    "ICL (GPT-5.4)": -0.021,
-    "Mem0 (GPT-5.4)": 0.03,
-    "ACE (GPT-5.4)": 0.02,
-    "Claude-Code (Sonnet 4.6)": -0.03,
-    "note": "All 5 Mubit runs positive gain; run 5 = +0.051 bits, the only absolutely-positive stateful score ever recorded on this task. Every paper system's stateful arm is negative bits. No system's gain clears 2-sigma."
+    "mubit_model": "gemini-3.7-flash",
+    "Mubit": 0.021,
+    "ICL": -0.021,
+    "Mem0": 0.03,
+    "ACE": 0.02,
+    "Claude-Code": -0.03,
+    "note": "All 5 Mubit runs positive; run 5 = +0.051 bits, the only absolutely-positive stateful score ever recorded here. No system's gain clears 2-sigma; every paper stateful arm is negative bits."
+   },
+   {
+    "task": "Blind Spectrum Monitoring",
+    "mubit_model": "gemini-3.5-flash (registry)",
+    "Mubit": 0.318,
+    "ICL": 0.294,
+    "Mem0": 0.156,
+    "ACE": 0.0,
+    "Claude-Code": null,
+    "note": "Normalized g_b after structured-registry optimization (11.6% -> 31.8%). Best-run IoU 71.1%. The earlier +53.7% figure was a baseline artifact (see FINDINGS.md 7.1)."
+   },
+   {
+    "task": "Database Exploration",
+    "mubit_model": "gemini-3.5-flash",
+    "Mubit": 0.137,
+    "ICL": 0.201,
+    "Mem0": 0.202,
+    "ACE": 0.086,
+    "Claude-Code": null,
+    "note": "Headline is drift adaptation, not raw gain: Mubit +32% post-migration drift gain; Mem0's brittle facts break (negative). See chart_5/chart_7."
+   },
+   {
+    "task": "Exploitable Poker",
+    "mubit_model": "gemini-3.5-flash (V11)",
+    "Mubit": 0.108,
+    "ICL": null,
+    "Mem0": null,
+    "ACE": null,
+    "Claude-Code": null,
+    "note": "Session-stateful + opponent observations. Paper competitor values unverifiable (artifacts duplicate them across tasks - FINDINGS.md 7.3); shown only where verifiable."
    },
    {
     "task": "Codebase Adaptation",
-    "Mubit (gpt-5)": -0.036,
-    "ICL (GPT-5.4)": 0.036,
-    "Mem0 (GPT-5.4)": 0.157,
-    "ACE (GPT-5.4)": 0.083,
-    "Claude-Code (Sonnet 4.6)": 0.038,
-    "note": "Mubit neutral (two configs, both ~-0.035). mem0's +0.157 is n.s. (run sigma 0.129); only ACE's +0.083 clears 2-sigma. Entire field clusters near zero."
+    "mubit_model": "gpt-5",
+    "Mubit": -0.036,
+    "ICL": 0.036,
+    "Mem0": 0.157,
+    "ACE": 0.083,
+    "Claude-Code": 0.038,
+    "note": "Mubit neutral (two distiller configs). mem0 +0.157 is n.s. (run sigma 0.129); only ACE clears 2-sigma. Field clusters near zero."
    }
   ]
  },
