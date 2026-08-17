@@ -44,7 +44,7 @@ import collector as collector_mod  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_CLBENCH = REPO.parent / "continual-learning-bench"
-DEFAULT_RICEDB = Path.home() / "Mubit" / "ricedb"
+DEFAULT_MUBIT_ENDPOINT = "https://api.mubit.ai"
 
 # `database_exploration_fixed` is `database_exploration` with the baseline
 # slicing corrected — same questions, same seed, same budget, same grader; see
@@ -236,7 +236,7 @@ def build_reference() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def preflight(clbench: Path, ricedb: Path) -> dict[str, Any]:
+def preflight(clbench: Path, mubit_endpoint: str) -> dict[str, Any]:
     head("Preflight")
     ctx: dict[str, Any] = {}
 
@@ -270,7 +270,7 @@ def preflight(clbench: Path, ricedb: Path) -> dict[str, Any]:
         )
     say("embedding service on :8080", "ok")
 
-    mubit_bin = ricedb / "target" / "release" / "mubit"
+    # Hosted Mubit: no local binary; endpoint reachability is checked at run time.
     ctx["mubit_bin"] = mubit_bin if mubit_bin.exists() else None
     if mubit_bin.exists():
         say(f"mubit binary {mubit_bin}", "ok")
@@ -567,7 +567,7 @@ def terminate_group(proc: subprocess.Popen) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--clbench", default=str(DEFAULT_CLBENCH))
-    ap.add_argument("--ricedb", default=str(DEFAULT_RICEDB))
+    ap.add_argument("--mubit-endpoint", default=DEFAULT_MUBIT_ENDPOINT)
     ap.add_argument("--port", type=int, default=8799, help="collector / page server port")
     ap.add_argument("--mubit-port", type=int, default=3320)
     ap.add_argument("--max-workers", type=int, default=MAX_WORKERS)
@@ -606,7 +606,7 @@ def main() -> int:
             hold()
             return 0
 
-        ctx = preflight(clbench, Path(args.ricedb).expanduser().resolve())
+        ctx = preflight(clbench, args.mubit_endpoint)
 
         head("Install")
         sys.path.insert(0, str(REPO / "demo"))

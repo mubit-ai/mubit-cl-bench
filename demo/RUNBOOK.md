@@ -40,7 +40,7 @@ is not, so you never discover it 40 seconds into a paid run.
 - **Keys in its `.env`** — `GEMINI_API_KEY` and `MUBIT_API_KEY`.
 - **The embedding service answering** on `127.0.0.1:8080`. Mubit needs it to
   embed lessons; without it the run starts and then fails.
-- **A built Mubit binary** at `~/Mubit/ricedb/target/release/mubit`. If it is
+- **A Mubit API key** from [console.mubit.ai](https://console.mubit.ai) (the demo talks to the hosted instance). If it is
   missing, an already-running Mubit is adopted instead.
 
 ---
@@ -155,7 +155,7 @@ parameters work on all four pages.
 | `--mubit-port` | `3320` | Mubit HTTP port. The gRPC port is picked free automatically. |
 | `--max-workers` | `2` | Keeps both arms advancing together. Raising it makes the baseline finish before the memory arm reaches question three. |
 | `--clbench PATH` | `../continual-learning-bench` | The CL-Bench checkout to run. |
-| `--ricedb PATH` | `~/Mubit/ricedb` | Where the Mubit binary lives. |
+| `--mubit-endpoint URL` | `https://api.mubit.ai` | Hosted Mubit endpoint. |
 | `--keep-mubit-data` | off | Keep the temp Mubit data directory after the run. |
 | `--no-hold` | off | Exit after verification instead of keeping the pages served. |
 

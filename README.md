@@ -1,6 +1,6 @@
 # Mubit on CL-Bench
 
-Benchmarking [Mubit](https://github.com/mubit-ai/ricedb) as an assistive memory system on the [Continual Learning Bench (CL-Bench)](https://github.com/pgasawa/continual-learning-bench) — the expert-validated benchmark that measures whether AI agents genuinely improve through sequential experience.
+Benchmarking [Mubit](https://console.mubit.ai) as an assistive memory system on the [Continual Learning Bench (CL-Bench)](https://github.com/pgasawa/continual-learning-bench) — the expert-validated benchmark that measures whether AI agents genuinely improve through sequential experience.
 
 CL-Bench's central question: **does an agent do better on later tasks because it learned from earlier ones?** The paper's headline finding is that dedicated memory systems (Mem0, ACE, ICL Notepad) all *underperform* naive in-context learning. Mubit is the exception.
 
@@ -104,7 +104,7 @@ Each Mubit system is a subclass of CL-Bench's `ContinualLearningSystem`. The cor
    cd continual-learning-bench
    uv sync --all-extras
    ```
-3. **A running Mubit instance** (local or hosted). See the [Mubit docs](https://github.com/mubit-ai/ricedb) for setup.
+3. **A running Mubit instance** (local or hosted). Get an API key at [console.mubit.ai](https://console.mubit.ai).
 4. **An LLM API key** (Gemini, OpenAI, or Anthropic).
 
 ---
@@ -127,7 +127,7 @@ cp -r systems/mubit_genai $CLBENCH/src/systems/
 
 ```bash
 cd $CLBENCH
-uv pip install -e /path/to/ricedb/sdk/python/mubit-sdk
+uv pip install mubit-sdk
 ```
 
 ### Step 3: Configure environment
@@ -246,24 +246,20 @@ Gain isolates **learning from experience** from base-model capability. A memory 
 
 ---
 
-## Running a local Mubit instance
+## Getting a Mubit API key
+
+The benchmark runs against a hosted Mubit instance — no local setup required.
+
+1. Sign up at **[console.mubit.ai](https://console.mubit.ai)** and create an instance.
+2. Copy your API key from the console (format: `mbt_...`).
+3. Export it before running:
 
 ```bash
-# Clone Mubit
-git clone https://github.com/mubit-ai/ricedb
-cd ricedb
-
-# Build
-cargo build --release
-
-# Start with a known admin key and embedding service
-export MUBIT_BOOTSTRAP_ADMIN_API_KEY="mbt_local_mykey01_<32+ hex chars>"
-export MUBIT_CORE_EMBEDDING_SERVICE_URL=http://127.0.0.1:8080
-
-./target/release/mubit --http-port 3320 --data-dir /tmp/mubit-clbench
+export MUBIT_API_KEY="mbt_your_key_here"
+export MUBIT_ENDPOINT="https://api.mubit.ai"   # default; override only if you run your own gateway
 ```
 
-The key format is `mbt_<instance_tag>_<key_id>_<secret>`. The instance tag must match the runtime's instance ID (defaults to `local`).
+The SDK picks up both variables automatically.
 
 ---
 

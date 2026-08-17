@@ -254,7 +254,7 @@ differing copy is reported before it is replaced.
 - CL-Bench checked out with `.venv` built and `data/database_exploration` fetched
 - `.env` in the CL-Bench root with `GEMINI_API_KEY` and `MUBIT_API_KEY`
 - The embedding service answering on `127.0.0.1:8080`
-- A built Mubit binary at `ricedb/target/release/mubit`
+- A Mubit API key from [console.mubit.ai](https://console.mubit.ai)
 
 `run_demo.py` checks all of these before spending anything and names whichever
 one is missing.
