@@ -70,12 +70,12 @@
    {
     "task": "Codebase Adaptation",
     "mubit_model": "gpt-5",
-    "Mubit": -0.018,
+    "Mubit": 0.055,
     "ICL": 0.036,
     "Mem0": 0.157,
     "ACE": 0.083,
     "Claude-Code": 0.038,
-    "note": "v3.2 (full-episode distiller, per-issue accumulation, per-turn retrieval, repo filter): recovery on hard issues DOUBLED (+2.73 vs +1.34 summed) but easy-issue regressions persist; net -0.018. v1/v2 (-0.035) ran the generic distiller due to a continuation-prompt detection bug. Baseline flips whole issues between identical configs (e.g. 0.70->0.00); mem0's +0.157 is n.s. (sigma 0.129)."
+    "note": "v4 (atomic quickstart: tests/layout/submit from SOLVED same-repo lessons at instance start; no per-turn narratives): +0.055, 4/5 runs positive, stateful mean 0.628 \u2014 the highest absolute codebase score of any system (paper best: ACE 0.609, mem0 0.584). Regressions halved vs v3.2 (\u22121.04 vs \u22123.07), steps/issue 14.7\u219212.5. Iteration arc: \u22120.035 \u2192 \u22120.018 \u2192 +0.055."
    }
   ]
  },
