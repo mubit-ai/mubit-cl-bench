@@ -751,37 +751,5 @@
   ],
   "source": "Paper artifacts: final_results/runs/*/task_artifacts.json.gz (instance_outcomes)",
   "note": "No system's gain clears 2-sigma. Task is unsolved by the field."
- },
- "chart_10_adaptive_memory_routing": {
-  "title": "Adaptive Memory Routing: Skip Retrieval When Memory Can't Help",
-  "subtitle": "MemoryBench (github.com/harshtripathi6/mubit_memoryBench), 30 episodes, local Mubit + gemini-2.5-flash, 2026-08-17.",
-  "type": "three_arm",
-  "data": [
-   {
-    "arm": "NoMemory",
-    "task_score": 1.0,
-    "reward": 1.0,
-    "mid_retrievals": 0,
-    "abstentions": 0,
-    "retrieval_p50_ms": 0
-   },
-   {
-    "arm": "Fixed (always retrieve)",
-    "task_score": 1.0,
-    "reward": 0.997,
-    "mid_retrievals": 30,
-    "abstentions": 0,
-    "retrieval_p50_ms": 59
-   },
-   {
-    "arm": "Adaptive (probe -> decide)",
-    "task_score": 1.0,
-    "reward": 0.998,
-    "mid_retrievals": 18,
-    "abstentions": 12,
-    "retrieval_p50_ms": 82
-   }
-  ],
-  "note": "Routing claim reproduced: 40% of retrievals correctly skipped with zero quality loss. Quality axis ceiling-limited with gemini-2.5-flash (all arms 1.0 task score) - demonstrates cost-aware routing, not memory-driven quality."
  }
 }

@@ -153,12 +153,6 @@ Two GPT-5 configurations (generic distiller, then an operational-knowledge disti
 
 v2's runs tell the real story: 3 of 5 beat baseline (best +0.10), but one bad early-lesson cascade (run 1: 0.320) drags the mean. The task's baseline itself moved ±0.08 between identical configs — the noise floor most of the paper's systems sit inside. A gemini-3.7-flash configuration (weakest baseline, most headroom) is in flight.
 
-### Adaptive memory routing (MemoryBench)
-
-![Adaptive Routing](charts/chart10_adaptive_routing.png)
-
-On [MemoryBench](https://github.com/harshtripathi6/mubit_memoryBench) (30 synthetic incidents, three arms): the adaptive controller **correctly skipped 40% of retrievals with zero quality loss** (reward 0.998 vs 0.997 always-retrieve), with Mubit retrieval at p50 60–80ms. Quality is ceiling-limited at this model tier (all arms 1.0 task score) — this demonstrates Mubit's *cost-aware routing* axis, complementing the quality (CL-Bench) and efficiency (token savings) pillars.
-
 ---
 
 ## How Mubit Works as a CL-Bench System
