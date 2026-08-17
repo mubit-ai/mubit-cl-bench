@@ -2,7 +2,7 @@
 
 > **Mubit is the only memory system that consistently beats in-context learning on the Continual Learning Bench.**
 
-Benchmarking [Mubit](https://github.com/mubit-ai/ricedb) as an assistive memory system on the [Continual Learning Bench (CL-Bench)](https://github.com/pgasawa/continual-learning-bench) — the expert-validated benchmark that measures whether AI agents genuinely improve through sequential experience.
+Benchmarking [Mubit](https://console.mubit.ai) as an assistive memory system on the [Continual Learning Bench (CL-Bench)](https://github.com/pgasawa/continual-learning-bench) — the expert-validated benchmark that measures whether AI agents genuinely improve through sequential experience.
 
 The CL-Bench paper's headline finding: **dedicated memory systems (Mem0, ACE, ICL Notepad) all underperform naive in-context learning.** Mubit breaks this pattern.
 
@@ -236,7 +236,7 @@ Create a `.env` in the CL-Bench root:
 ```bash
 GEMINI_API_KEY=your-gemini-key
 MUBIT_API_KEY=your-mubit-api-key
-MUBIT_ENDPOINT=http://127.0.0.1:3320
+MUBIT_ENDPOINT=https://api.mubit.ai
 ```
 
 ### Step 4: Set up task data
@@ -301,18 +301,20 @@ Gain isolates **learning from experience** from base-model capability.
 
 ---
 
-## Running a local Mubit instance
+## Getting a Mubit API key
+
+The benchmark runs against a hosted Mubit instance — no local setup required.
+
+1. Sign up at **[console.mubit.ai](https://console.mubit.ai)** and create an instance.
+2. Copy your API key from the console (format: `mbt_...`).
+3. Export it before running:
 
 ```bash
-git clone https://github.com/mubit-ai/ricedb
-cd ricedb
-cargo build --release
-
-export MUBIT_BOOTSTRAP_ADMIN_API_KEY="mbt_local_mykey01_<32+ hex chars>"
-export MUBIT_CORE_EMBEDDING_SERVICE_URL=http://127.0.0.1:8080
-
-./target/release/mubit --http-port 3320 --data-dir /tmp/mubit-clbench
+export MUBIT_API_KEY="mbt_your_key_here"
+export MUBIT_ENDPOINT="https://api.mubit.ai"   # default; override only if you run your own gateway
 ```
+
+The SDK picks up both variables automatically. That's the only Mubit configuration the benchmark needs.
 
 ---
 

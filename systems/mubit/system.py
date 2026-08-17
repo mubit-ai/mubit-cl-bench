@@ -13,7 +13,7 @@ mirrors icl_notepad's instance-boundary clearing discipline.
 
 Configuration:
   MUBIT_API_KEY   API key for the Mubit instance (required).
-  MUBIT_ENDPOINT  HTTP endpoint (default http://127.0.0.1:3320).
+  MUBIT_ENDPOINT  HTTP endpoint (default https://api.mubit.ai).
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 DEFAULT_MODEL = "gemini/gemini-2.5-flash"
-DEFAULT_ENDPOINT = "http://127.0.0.1:3320"
+DEFAULT_ENDPOINT = "https://api.mubit.ai"
 DEFAULT_TOP_K = 6
 
 RESPONSE_SYSTEM_PROMPT = """\
