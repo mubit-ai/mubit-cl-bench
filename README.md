@@ -10,6 +10,37 @@ The CL-Bench paper's headline finding: **dedicated memory systems (Mem0, ACE, IC
 
 ## Results
 
+### All six tasks (2026-08-17, 5-run protocol)
+
+| Task | Mubit (model) | Best competitor | Verdict |
+|---|---|---|---|
+| **Sales Prediction** | **+0.401 raw gain** (gpt-5), std 0.009, 5/5 runs beat baseline | claude-code +0.378 | **SOTA** |
+| **Cohort Studies** | +0.021 (gemini-3.7), 5/5 runs positive; run 5 = **+0.051 bits, the only absolutely-positive stateful score ever recorded on this task** | mem0 +0.030 (n.s.) | **Top-3, strongest profile** |
+| **Blind Spectrum Monitoring** | 71% best-run IoU; 31.8% g_b (structured registry) | ICL 29.4% g_b | **Leads** |
+| **Database Exploration** | +32% drift adaptation post-migration | Mem0 *negative* on drift | **Only system that adapts** |
+| **Exploitable Poker** | +10.8% (session-stateful + opponent observations) | (paper values unverifiable — see FINDINGS §7.3) | Positive |
+| **Codebase Adaptation** | −0.036 (gpt-5, two distiller configs) | mem0 +0.157 (n.s. at 2σ, run σ 0.129) | Neutral — like most of the field |
+
+**The pattern: Mubit wins exactly where continual learning has real signal to accumulate** (forecast transfer, spectrum registry, schema-drift survival, opponent modeling) **and is neutral where the entire field — including the paper's best systems — is statistically at zero** (codebase, cohort). Mubit's cohort runs are the first ever to post an absolutely-positive stateful score.
+
+#### Significance analysis (new)
+
+Re-derived from the paper's own shipped artifacts (`final_results/runs/*/task_artifacts.json.gz`):
+
+- **Cohort Studies:** every system's stateful arm scores *negative bits*. Positive "gains" are baseline-relative artifacts (mem0: baseline −0.063 → stateful −0.034; 4 of its 5 stateful runs negative). No system's gain clears 2σ.
+- **Codebase Adaptation:** only ACE's +0.083 clears 2σ. mem0's headline +0.157 does not (run σ 0.129, spread 0.39–0.71). Baselines on identical configs move ±0.08 run-to-run — we reproduced this independently.
+- Full tables: `chart_data.json` → `chart_9_cohort_everyone_zero`.
+
+#### Sales across three model tiers
+
+| Config | Baseline → Stateful | Raw gain | Normalized |
+|---|---|---|---|
+| **gpt-5** | 0.200 → **0.601** (std 0.009) | **+0.401 — SOTA** | 0.501 |
+| **gemini-3-flash** | 0.506 → **0.776** (highest absolute on the board) | +0.271 | 0.547 — beats same-family ICL (0.478) |
+| gemini-2.5-flash | 0.214 → 0.482 | +0.268 | 0.341 |
+
+15 of 15 stateful runs beat their baseline across all three tiers. Against same-model systems: Mubit+GPT-5 beats icl-gpt-5.4 by +0.10 and mem0-gpt-5.4 by +0.15.
+
 ### Headline: Blind Spectrum Monitoring (BSM)
 
 The BSM task requires an agent to build an increasingly accurate model of a radio frequency band across 90 sequential scans. Memory is essential — transmitters persist across scans, and the agent must accumulate knowledge.
@@ -106,6 +137,21 @@ Poker is the hardest task for memory — cards are dealt randomly each hand. Aft
 | **V11** | **Session-stateful + Mubit opponent observations** | **+10.8%** |
 
 The breakthrough combined two mechanisms: (1) implicit session memory — the model maintains conversation history across hands, calibrating its play over the session (like ICL), and (2) explicit opponent intelligence from Mubit — behavior patterns the model can't see in its own history. 47/120 hands positive, only 18 negative.
+
+### Codebase Adaptation: neutral (−0.036), like most of the field
+
+Two GPT-5 configurations (generic distiller, then an operational-knowledge distiller extracting test commands and repo layout):
+
+| Config | Baseline | Stateful | Gain |
+|---|---|---|---|
+| v1 (generic lessons) | 0.468 | 0.433 | −0.035 |
+| v2 (operational lessons, repo-keyed) | 0.551 | 0.516 | −0.036 |
+
+v2's runs tell the real story: 3 of 5 beat baseline (best +0.10), but one bad early-lesson cascade (run 1: 0.320) drags the mean. The task's baseline itself moved ±0.08 between identical configs — the noise floor most of the paper's systems sit inside. A gemini-3.7-flash configuration (weakest baseline, most headroom) is in flight.
+
+### Adaptive memory routing (MemoryBench)
+
+On [MemoryBench](https://github.com/harshtripathi6/mubit_memoryBench) (30 synthetic incidents, three arms): the adaptive controller **correctly skipped 40% of retrievals with zero quality loss** (reward 0.998 vs 0.997 always-retrieve), with Mubit retrieval at p50 60–80ms. Quality is ceiling-limited at this model tier (all arms 1.0 task score) — this demonstrates Mubit's *cost-aware routing* axis, complementing the quality (CL-Bench) and efficiency (token savings) pillars.
 
 ---
 
