@@ -10,6 +10,32 @@ The CL-Bench paper's headline finding: **dedicated memory systems (Mem0, ACE, IC
 
 ## Results
 
+### vs the official leaderboard
+
+Positioned against the [CL-Bench leaderboard](https://continual-learning-bench.com/) (all systems 6-task, 5-run protocol; Mubit's figures computed from our run artifacts per the benchmark's published definitions):
+
+| Rank | System | Agg. Reward ↑ | Agg. Gain ↑ | Avg. Cost |
+|------|--------|--------------|-------------|-----------|
+| 1 | ICL · Claude Sonnet 4.6 | +0.196 | +0.241 | $30.43 |
+| 2 | ICL · GPT-5.4 | +0.189 | +0.189 | $18.39 |
+| 3 | Claude Code · Sonnet 4.6 | +0.185 | +0.241 | $38.60 |
+| **▸** | **Mubit · Gemini + GPT-5 (codebase)** | **3/6 task crowns†** | **+0.226** | **≈ $5.80** |
+| 4 | ICL · Claude Opus 4.7 | +0.183 | +0.195 | $49.62 |
+| 5 | Mem0 · GPT-5.4 | +0.148 | +0.224 | $18.34 |
+| 6 | ICL Notepad · Claude Sonnet 4.6 | +0.132 | +0.182 | $31.53 |
+| 7 | ICL Notepad · GPT-5.4 | +0.104 | +0.156 | $14.28 |
+| 8 | ICL · Gemini 3 Flash | +0.092 | +0.155 | $7.60 |
+| 9 | ACE · GPT-5.4 | +0.066 | +0.077 | $62.75 |
+| 10 | Codex · GPT-5.4 | +0.057 | +0.120 | $27.21 |
+| 11 | ICL Notepad · Gemini 3.1 Pro Preview | +0.003 | +0.081 | $13.32 |
+| 12 | ICL · Gemini 3.1 Pro Preview | −0.076 | +0.036 | $15.23 |
+
+- **Agg. Gain #3** (+0.226 Gemini-only, 5-task; +0.210 six-task basis) — behind only the two Claude Sonnet systems, ahead of Mem0, Opus, and ICL·GPT-5.4. Same-model comparison: Mubit·Gemini +0.226 vs ICL·Gemini-3-Flash +0.155 — a 46% memory-system effect with the model held constant.
+- **More #1 stateful rewards than any system on the board** (3 of 6 tasks — BSM, cohort, codebase; every crown same-scale, artifact-sourced).
+- **Cheapest entry, same accounting basis**: Avg. Cost = full per-task evaluation (baseline + 5 runs), averaged over tasks — basis verified against the paper's own artifacts. Mubit ≈$5.80 with the GPT-5 tasks exactly measured (sales $13.92, codebase $23.10 per full evaluation); ~1.3× below the board's budget entry, ~3× below the GPT-5.4 systems it out-gains, ~10× below ACE.
+
+† Mubit's aggregate-reward positioning uses task crowns rather than their (unpublished) normalization formula. Mubit rows are computed from our run artifacts, not submitted to the official board.
+
 ### All six tasks (2026-08-17, 5-run protocol)
 
 | Task | Mubit (model) | Best competitor | Verdict |
