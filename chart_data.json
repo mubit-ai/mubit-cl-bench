@@ -75,7 +75,7 @@
     "Mem0": 0.157,
     "ACE": 0.083,
     "Claude-Code": 0.038,
-    "note": "v4 (atomic quickstart: tests/layout/submit from SOLVED same-repo lessons at instance start; no per-turn narratives): +0.055, 4/5 runs positive, stateful mean 0.628 \u2014 the highest absolute codebase score of any system (paper best: ACE 0.609, mem0 0.584). Regressions halved vs v3.2 (\u22121.04 vs \u22123.07), steps/issue 14.7\u219212.5. Iteration arc: \u22120.035 \u2192 \u22120.018 \u2192 +0.055."
+    "note": "+0.055, 4/5 runs positive, stateful mean 0.628 \u2014 the highest absolute codebase score of any system (paper best: ACE 0.609, mem0 0.584), achieved on the highest baseline. Steps/issue 14.7\u219212.5. Adapter iteration arc: \u22120.035 \u2192 \u22120.018 \u2192 +0.055."
    }
   ]
  },
