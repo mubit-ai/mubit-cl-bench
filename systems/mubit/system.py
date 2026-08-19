@@ -498,7 +498,7 @@ class MubitMemorySystem(ContinualLearningSystem):
                 # agent router and the server-side answer synthesis. Measured
                 # on a 50-entry store: 46s (gateway 504) -> 0.5s, and none of
                 # the synthesis tokens are billed.
-                mode="direct",
+                mode="direct_bypass",
                 evidence_only=True,
             )
         except Exception:
