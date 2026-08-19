@@ -17,7 +17,7 @@ import logging
 import os
 from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from ...interface import Query, Response
 from ...registry import register_system
@@ -190,10 +190,15 @@ class MubitGenAISystem(MubitMemorySystem):
                     contents=contents,
                     config=config,
                 )
+                # Parse inside the loop: a safety block, a MAX_TOKENS cut or a
+                # thought-only candidate all return 200 OK with a body that
+                # won't parse, and `or ""` turns a None body into the same
+                # ValidationError — one more retry instead of a dead rollout.
+                parsed = response_schema.model_validate_json(response.text or "")
                 break
             except Exception as exc:
                 msg = str(exc)
-                is_transient = any(
+                is_transient = isinstance(exc, ValidationError) or any(
                     code in msg
                     for code in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "500", "502", "504",
                                  "timeout", "timed out", "Connection", "deadlocked")
@@ -209,9 +214,6 @@ class MubitGenAISystem(MubitMemorySystem):
                     msg[:120],
                 )
                 _time.sleep(wait)
-
-        # Parse the structured JSON response.
-        parsed = response_schema.model_validate_json(response.text)
 
         # Build UsageEvent from usage metadata.
         usage_event = None
