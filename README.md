@@ -43,7 +43,7 @@ Positioned against the [CL-Bench leaderboard](https://continual-learning-bench.c
 | **Sales Prediction** | **+0.401 raw gain** (gpt-5), std 0.009, 5/5 runs beat baseline | claude-code +0.378 | **SOTA** |
 | **Cohort Studies** | +0.021 (gemini-3.7), 5/5 runs positive; run 5 = **+0.051 bits, the only absolutely-positive stateful score ever recorded on this task** | mem0 +0.030 (n.s.) | **Top-3, strongest profile** |
 | **Blind Spectrum Monitoring** | 71% best-run IoU; 31.8% g_b (structured registry) | ICL 29.4% g_b | **Leads** |
-| **Database Exploration** | +32% drift adaptation post-migration | Mem0 *negative* on drift | **Only system that adapts** |
+| **Database Exploration** | +11.2% → +14.8% gain across the migration | icl +8.4% → +13.6% | **Adapts across the drift** |
 | **Exploitable Poker** | +10.8% (session-stateful + opponent observations) | (paper values unverifiable — see FINDINGS §7.3) | Positive |
 | **Codebase Adaptation** | **+0.055** (gpt-5), 4/5 runs positive, stateful 0.628 = highest absolute of any system | mem0 +0.157 (n.s.), ACE +0.083 | **Positive** |
 
@@ -73,14 +73,16 @@ The BSM task requires an agent to build an increasingly accurate model of a radi
 
 | System | IoU (avg) | Best Run | Normalized Gain | vs Stateless |
 |---|---|---|---|---|
-| **Mubit** | **65%** | **71%** | **+53.7%** | **+173%** |
+| **Mubit** | **64%** | **71%** | **+31.8%** | **+36%** |
 | ICL (paper best) | 51% | — | +29.4% | +115% |
 | Mem0 | 37% | — | +15.6% | +56% |
 | ACE | 22% | — | 0.0% | baseline |
 | ICL (baseline) | 34% | 36% | — | +44% |
 | Stateless (no memory) | 24% | — | — | — |
 
-> **Mubit beats every system in the paper by +20 percentage points: 71% vs 51% IoU.**
+Mubit's row is one artifact — `mubit-bsm-registry-3.5flash`, 3 runs at 0.597 / 0.711 / 0.608. Its own stateless arm measures 47% IoU, so its "vs Stateless" is relative to that, not to the 24% row.
+
+**Provenance:** these BSM figures were measured with a system prompt that carried a hardcoded channel-plan prior — the evaluated config's true 24 MHz spacing, center offsets, 15/5 MHz bandwidths and dormant slots. That prior has since been removed from the code, so the numbers above are not reproducible from the current tree and need re-running.
 
 ![Gain Comparison](charts/chart1_gain_comparison.png)
 
@@ -94,34 +96,33 @@ The BSM task requires an agent to build an increasingly accurate model of a radi
 
 ![BSM Learning Curve](charts/chart2_bsm_learning_curve.png)
 
-Mubit's IoU climbs steadily from ~24% (stateless baseline) to 65%+ over 90 scans, demonstrating genuine continual learning. Competing systems plateau earlier or degrade from stale beliefs.
+The curve plots the `mubit-bsm-v4-3.5flash` run, not the registry run in the table above: IoU rises from 24% on scan 1 to ~80–86% by scan 90 (stateful mean 65%) while its stateless arm stays flat at 24%. That run's unusually low stateless arm is the baseline artifact noted in FINDINGS §7.1, and like every BSM figure here it predates the prompt-prior removal.
 
-### Database Exploration — Where Mubit Dominates Mem0 on Concept Drift
+### Database Exploration — Concept Drift
 
 The Database task introduces a **schema migration halfway through** (tables renamed: `attrs_g3` → `attrs_g3_legacy`, columns reformatted: `prc` → `prc_usd`, tables removed/added). This is the critical test for memory systems: **when the world changes, does your memory help or hurt?**
 
 | System | Pre-Migration Gain | Post-Migration Gain | Drift Delta |
 |---|---|---|---|
 | **Mubit** | **+11.2%** | **+14.8%** | **+3.6% (adapts)** |
-| Mem0 | +25.0% | +15.0% | **−10.0% (degrades)** |
+| ICL | +8.4% | +13.6% | +5.1% |
+
+Measured on the pre-5174d51 prose-lesson adapter, from `results/database_exploration/mubit-db-3.json.gz` and `icl-db-3.json.gz`.
 
 ![Drift Adaptation](charts/chart5_drift_adaptation.png)
 
-**Why Mem0 breaks:** Mem0 extracts brittle surface facts (`"attrs_g3 has columns: ref_id, attr_key, attr_val"`). After the migration, `attrs_g3` doesn't exist. Mem0 retrieves the stale fact, the agent queries the dead table, wastes queries rediscovering the schema, and performance drops.
-
-**Why Mubit adapts:** Mubit distills durable semantic lessons (`"product attribute data lives in the attrs table family, keyed by ref_id"`). After the migration, the *concept* is still correct — only the table name changed. Mubit's semantic retrieval bridges the rename automatically. The agent wastes fewer queries, and gain **increases** post-migration.
+**Why Mubit adapts:** Mubit stores one fact per database object, keyed by that object. A rename overwrites the object's entry — the drift fact reuses the dead table's key — so the stale column list is replaced rather than left recallable, and the agent doesn't retrieve a schema that no longer exists.
 
 | System | Efficiency | vs Stateless | Architecture |
 |---|---|---|---|
-| **Mubit** | **18%** | **+260%** | Semantic lessons that survive schema changes |
-| Mem0 | 17% | +240% | Extracted facts that break on schema changes |
+| **Mubit** | **18%** | **+260%** | One keyed fact per database object; a rename overwrites it |
 | ICL | 14.5% | +190% | Full history replay (grows linearly in tokens) |
 
 ### Per-Run Consistency
 
 ![Per-Run Consistency](charts/chart4_per_run_consistency.png)
 
-Zero negative-gain runs across all experiments. Mem0 and ACE frequently hurt performance with stale beliefs; Mubit never does.
+Zero negative-gain runs on BSM — every run of every BSM configuration beats its stateless arm. The chart is BSM only; poker is negative on both of its artifacts (see Honest Limitations).
 
 ---
 
@@ -129,9 +130,9 @@ Zero negative-gain runs across all experiments. Mem0 and ACE frequently hurt per
 
 | System | Beats ICL? | BSM IoU | DB Drift | Cost | Architecture |
 |---|---|---|---|---|---|
-| **Mubit** | **✅ Yes** | **71%** | **+3.6% (adapts)** | Low | Typed cognitive memory (SDM + graph + semantic fusion) |
+| **Mubit** | **✅ Yes** | **64%** | **+3.6% (adapts)** | Low | Typed cognitive memory (SDM + graph + semantic fusion) |
 | ICL | — (baseline) | 51% | +5.1% | Low | Full conversation history replay |
-| Mem0 | ❌ No | 37% | **−10.0% (breaks)** | Low | LLM-extracted facts → vector search |
+| Mem0 | ❌ No | 37% | — | Low | LLM-extracted facts → vector search |
 | ACE | ❌ No | 22% | degrades | $62.8/run | Evolving context playbook |
 | ICL Notepad | ❌ No | — | — | Medium | Model-curated scratchpad |
 
