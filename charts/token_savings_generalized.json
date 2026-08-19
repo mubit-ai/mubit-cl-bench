@@ -1,160 +1,17 @@
 {
-  "title": "Token Efficiency: Mubit Memory vs Full Context Replay",
-  "description": "Generalized model of cumulative input tokens for an agent processing N sequential queries. Without memory, each query re-sends all prior conversation history (quadratic growth). With Mubit, each query retrieves a fixed-size block of relevant lessons (linear growth).",
-  "assumptions": {
-    "system_prompt_tokens": 2000,
-    "avg_query_tokens": 500,
-    "avg_response_tokens": 1000,
-    "mubit_retrieval_tokens": 1500,
-    "note": "Based on empirical data from BSM (97.3% savings), Database (92.1%), and Tencent CL-bench (19.2%) benchmarks."
+  "title": "Token Efficiency: Mubit vs Full Context Replay",
+  "description": "Cumulative input tokens over N sequential tasks. Growth model calibrated to the measured CL-Bench suite: at N=6 the curves reproduce the measured values exactly (ICL 43.4M vs Mubit 7.2M, -83.5%). Replay re-sends all prior task history each time (quadratic); Mubit retrieves a fixed lesson block per task (linear).",
+  "calibration": {
+    "measured_point": {"tasks": 6, "icl_m_tokens": 43.4, "mubit_m_tokens": 7.2},
+    "per_task_context_m_tokens": 1.1,
+    "history_growth_m_tokens_per_task": 2.45,
+    "mubit_per_task_m_tokens": 1.2
   },
   "datapoints": [
-    {
-      "queries": 0,
-      "without_memory": 0,
-      "with_mubit": 0,
-      "tokens_saved": 0,
-      "savings_pct": 0
-    },
-    {
-      "queries": 5,
-      "without_memory": 35000,
-      "with_mubit": 20000,
-      "tokens_saved": 15000,
-      "savings_pct": 42.9
-    },
-    {
-      "queries": 10,
-      "without_memory": 107500,
-      "with_mubit": 40000,
-      "tokens_saved": 67500,
-      "savings_pct": 62.8
-    },
-    {
-      "queries": 15,
-      "without_memory": 217500,
-      "with_mubit": 60000,
-      "tokens_saved": 157500,
-      "savings_pct": 72.4
-    },
-    {
-      "queries": 20,
-      "without_memory": 365000,
-      "with_mubit": 80000,
-      "tokens_saved": 285000,
-      "savings_pct": 78.1
-    },
-    {
-      "queries": 25,
-      "without_memory": 550000,
-      "with_mubit": 100000,
-      "tokens_saved": 450000,
-      "savings_pct": 81.8
-    },
-    {
-      "queries": 30,
-      "without_memory": 772500,
-      "with_mubit": 120000,
-      "tokens_saved": 652500,
-      "savings_pct": 84.5
-    },
-    {
-      "queries": 35,
-      "without_memory": 1032500,
-      "with_mubit": 140000,
-      "tokens_saved": 892500,
-      "savings_pct": 86.4
-    },
-    {
-      "queries": 40,
-      "without_memory": 1330000,
-      "with_mubit": 160000,
-      "tokens_saved": 1170000,
-      "savings_pct": 88.0
-    },
-    {
-      "queries": 45,
-      "without_memory": 1665000,
-      "with_mubit": 180000,
-      "tokens_saved": 1485000,
-      "savings_pct": 89.2
-    },
-    {
-      "queries": 50,
-      "without_memory": 2037500,
-      "with_mubit": 200000,
-      "tokens_saved": 1837500,
-      "savings_pct": 90.2
-    },
-    {
-      "queries": 55,
-      "without_memory": 2447500,
-      "with_mubit": 220000,
-      "tokens_saved": 2227500,
-      "savings_pct": 91.0
-    },
-    {
-      "queries": 60,
-      "without_memory": 2895000,
-      "with_mubit": 240000,
-      "tokens_saved": 2655000,
-      "savings_pct": 91.7
-    },
-    {
-      "queries": 65,
-      "without_memory": 3380000,
-      "with_mubit": 260000,
-      "tokens_saved": 3120000,
-      "savings_pct": 92.3
-    },
-    {
-      "queries": 70,
-      "without_memory": 3902500,
-      "with_mubit": 280000,
-      "tokens_saved": 3622500,
-      "savings_pct": 92.8
-    },
-    {
-      "queries": 75,
-      "without_memory": 4462500,
-      "with_mubit": 300000,
-      "tokens_saved": 4162500,
-      "savings_pct": 93.3
-    },
-    {
-      "queries": 80,
-      "without_memory": 5060000,
-      "with_mubit": 320000,
-      "tokens_saved": 4740000,
-      "savings_pct": 93.7
-    },
-    {
-      "queries": 85,
-      "without_memory": 5695000,
-      "with_mubit": 340000,
-      "tokens_saved": 5355000,
-      "savings_pct": 94.0
-    },
-    {
-      "queries": 90,
-      "without_memory": 6367500,
-      "with_mubit": 360000,
-      "tokens_saved": 6007500,
-      "savings_pct": 94.3
-    },
-    {
-      "queries": 95,
-      "without_memory": 7077500,
-      "with_mubit": 380000,
-      "tokens_saved": 6697500,
-      "savings_pct": 94.6
-    },
-    {
-      "queries": 100,
-      "without_memory": 7825000,
-      "with_mubit": 400000,
-      "tokens_saved": 7425000,
-      "savings_pct": 94.9
-    }
+    {"tasks": 1,  "replay_m": 1.1,  "mubit_m": 1.2},
+    {"tasks": 6,  "replay_m": 43.4, "mubit_m": 7.2,  "saved_pct": 83.5},
+    {"tasks": 12, "replay_m": 174.9,"mubit_m": 14.4, "saved_pct": 91.8},
+    {"tasks": 24, "replay_m": 702.6,"mubit_m": 28.8, "saved_pct": 95.9},
+    {"tasks": 40, "replay_m": 1955.0,"mubit_m": 48.0, "saved_pct": 97.5}
   ]
 }

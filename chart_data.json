@@ -1,755 +1,221 @@
 {
- "metadata": {
-  "title": "Mubit on Continual Learning Bench (CL-Bench)",
-  "paper": "Asawa et al., arXiv:2606.05661, 2026",
-  "benchmark_repo": "github.com/pgasawa/continual-learning-bench",
-  "mubit_models": "gpt-5 / gemini-3-flash-preview / gemini-3.7-flash / gemini-2.5-flash (per task, noted below)",
-  "paper_models": "GPT-5.4 / Gemini 3 Flash / Claude Sonnet 4.6",
-  "n_runs": 5,
-  "metric": "Raw gain = r_sf - r_sl (stateful mean minus stateless baseline mean, 5 runs). Normalized g_b = (r_sf - r_sl) / (r_max - r_sl).",
-  "dates": "2026-08-17",
-  "significance": "Gain flagged n.s. when |gain| < 2 x std of the 5 stateful run means."
- },
- "chart_1_normalized_gain_comparison": {
-  "title": "Raw Gain on CL-Bench (all 6 tasks): Mubit vs Competing Memory Systems",
-  "subtitle": "Higher is better. Raw gain = stateful mean - stateless baseline (5 runs each). n.s. = not significant at 2-sigma vs run variance.",
-  "type": "grouped_bar",
-  "x_axis": "Task",
-  "y_axis": "Raw Gain (r_sf - r_sl)",
-  "data": [
-   {
-    "task": "Sales Prediction",
-    "mubit_model": "gpt-5",
-    "Mubit": 0.401,
-    "ICL": 0.303,
-    "Mem0": 0.255,
-    "ACE": 0.076,
-    "Claude-Code": 0.378,
-    "note": "Mubit SOTA on raw gain. Baseline 0.200 -> stateful 0.601 (std 0.009). All 5 runs beat baseline. Claude-Code = claude-code-sonnet-4.6 (paper best)."
+ "submissions": {
+  "mubit-gemini-3.7": {
+   "aggregate": {
+    "run_name": "mubit-gemini-3.7",
+    "tasks_included": 6,
+    "normalized_reward_mean": 0.3024718922245115,
+    "normalized_gain_mean": 0.3024718922245115,
+    "total_cost_usd_mean": 0.0,
+    "mean_task_cost_usd": 0.0,
+    "rank": 1,
+    "display_name": "mubit-gemini-3.7",
+    "system_label": "mubit-gemini-3.7",
+    "system_class": "mubit-gemini-3.7",
+    "model": ""
    },
-   {
-    "task": "Cohort Studies",
-    "mubit_model": "gemini-3.7-flash",
-    "Mubit": 0.021,
-    "ICL": -0.021,
-    "Mem0": 0.03,
-    "ACE": 0.02,
-    "Claude-Code": -0.03,
-    "note": "All 5 Mubit runs positive; run 5 = +0.051 bits, the only absolutely-positive stateful score ever recorded here. No system's gain clears 2-sigma; every paper stateful arm is negative bits."
-   },
-   {
-    "task": "Blind Spectrum Monitoring",
-    "mubit_model": "gemini-3.5-flash (registry)",
-    "Mubit": 0.318,
-    "ICL": 0.294,
-    "Mem0": 0.156,
-    "ACE": 0.0,
-    "Claude-Code": null,
-    "note": "Normalized g_b after structured-registry optimization (11.6% -> 31.8%). Best-run IoU 71.1%. The earlier +53.7% figure was a baseline artifact (see FINDINGS.md 7.1)."
-   },
-   {
-    "task": "Database Exploration",
-    "mubit_model": "gemini-3.5-flash",
-    "Mubit": 0.137,
-    "ICL": 0.201,
-    "Mem0": 0.202,
-    "ACE": 0.086,
-    "Claude-Code": null,
-    "note": "Headline is drift adaptation, not raw gain: Mubit +32% post-migration drift gain; Mem0's brittle facts break (negative). See chart_5/chart_7."
-   },
-   {
-    "task": "Exploitable Poker",
-    "mubit_model": "gemini-3.5-flash (V11)",
-    "Mubit": 0.108,
-    "ICL": null,
-    "Mem0": null,
-    "ACE": null,
-    "Claude-Code": null,
-    "note": "Session-stateful + opponent observations. Paper competitor values unverifiable (artifacts duplicate them across tasks - FINDINGS.md 7.3); shown only where verifiable."
-   },
-   {
-    "task": "Codebase Adaptation",
-    "mubit_model": "gpt-5",
-    "Mubit": 0.055,
-    "ICL": 0.036,
-    "Mem0": 0.157,
-    "ACE": 0.083,
-    "Claude-Code": 0.038,
-    "note": "+0.055, 4/5 runs positive, stateful mean 0.628 \u2014 the highest absolute codebase score of any system (paper best: ACE 0.609, mem0 0.584), achieved on the highest baseline. Steps/issue 14.7\u219212.5. Adapter iteration arc: \u22120.035 \u2192 \u22120.018 \u2192 +0.055."
+   "tasks": {
+    "blind_spectrum_monitoring": {
+     "reward_mean": 70.2923,
+     "baseline_reward": 20.771699999999996,
+     "normalized_reward_mean": 0.7153230687450075,
+     "n_runs": 5
+    },
+    "codebase_adaptation": {
+     "reward_mean": 6.1899999999999995,
+     "baseline_reward": 4.525,
+     "normalized_reward_mean": 0.11502590673575128,
+     "n_runs": 5
+    },
+    "cohort_studies": {
+     "reward_mean": 0.12499799999999997,
+     "baseline_reward": -0.3005080000000001,
+     "normalized_reward_mean": 0.12004520745663483,
+     "n_runs": 5
+    },
+    "database_exploration": {
+     "reward_mean": 7.1466666666666665,
+     "baseline_reward": 6.066666666666667,
+     "normalized_reward_mean": 0.031827111984282876,
+     "n_runs": 5
+    },
+    "exploitable_poker": {
+     "reward_mean": 74.92,
+     "baseline_reward": 26.9,
+     "normalized_reward_mean": 0.04319899244332494,
+     "n_runs": 5
+    },
+    "sales_prediction": {
+     "reward_mean": 9.80162,
+     "baseline_reward": 1.5608,
+     "normalized_reward_mean": 0.7894110659820676,
+     "n_runs": 5
+    }
    }
-  ]
- },
- "chart_2_bsm_learning_curve": {
-  "title": "BSM Learning Curve: Spectrum Coverage Over 90 Scans",
-  "subtitle": "Mubit accumulates dormant transmitters; stateless baseline cannot.",
-  "type": "line_chart",
-  "x_axis": "Scan Number",
-  "y_axis": "Spectrum Coverage (IoU)",
-  "x_values": [
-   1,
-   2,
-   3,
-   4,
-   5,
-   6,
-   7,
-   8,
-   9,
-   10,
-   11,
-   12,
-   13,
-   14,
-   15,
-   16,
-   17,
-   18,
-   19,
-   20,
-   21,
-   22,
-   23,
-   24,
-   25,
-   26,
-   27,
-   28,
-   29,
-   30,
-   31,
-   32,
-   33,
-   34,
-   35,
-   36,
-   37,
-   38,
-   39,
-   40,
-   41,
-   42,
-   43,
-   44,
-   45,
-   46,
-   47,
-   48,
-   49,
-   50,
-   51,
-   52,
-   53,
-   54,
-   55,
-   56,
-   57,
-   58,
-   59,
-   60,
-   61,
-   62,
-   63,
-   64,
-   65,
-   66,
-   67,
-   68,
-   69,
-   70,
-   71,
-   72,
-   73,
-   74,
-   75,
-   76,
-   77,
-   78,
-   79,
-   80,
-   81,
-   82,
-   83,
-   84,
-   85,
-   86,
-   87,
-   88,
-   89,
-   90
-  ],
-  "series": [
-   {
-    "name": "Mubit (stateful)",
-    "color": "#2563eb",
-    "values": [
-     0.2378,
-     0.2982,
-     0.3677,
-     0.3926,
-     0.401,
-     0.4753,
-     0.5704,
-     0.4312,
-     0.6487,
-     0.4442,
-     0.6368,
-     0.5739,
-     0.6355,
-     0.8098,
-     0.5698,
-     0.7176,
-     0.4456,
-     0.4322,
-     0.5611,
-     0.649,
-     0.4412,
-     0.4623,
-     0.6294,
-     0.4565,
-     0.4605,
-     0.4589,
-     0.4454,
-     0.4587,
-     0.5796,
-     0.6593,
-     0.5157,
-     0.4955,
-     0.4617,
-     0.6178,
-     0.4934,
-     0.6891,
-     0.8219,
-     0.5269,
-     0.5216,
-     0.6838,
-     0.6947,
-     0.6781,
-     0.5228,
-     0.6783,
-     0.7284,
-     0.7167,
-     0.8593,
-     0.6913,
-     0.7424,
-     0.6302,
-     0.5936,
-     0.7426,
-     0.5999,
-     0.5791,
-     0.5643,
-     0.626,
-     0.7194,
-     0.5548,
-     0.588,
-     0.7282,
-     0.5873,
-     0.6386,
-     0.6041,
-     0.8718,
-     0.7496,
-     1.0,
-     1.0,
-     0.6017,
-     0.7485,
-     0.8975,
-     0.7305,
-     0.9914,
-     0.7298,
-     0.6472,
-     0.8854,
-     1.0,
-     0.7934,
-     0.8621,
-     0.7833,
-     0.6552,
-     0.7865,
-     0.7616,
-     0.7656,
-     0.7805,
-     0.7923,
-     0.8654,
-     0.7677,
-     0.8611,
-     0.8476,
-     0.7949
-    ]
+  },
+  "mubit-gpt-5.4": {
+   "aggregate": {
+    "run_name": "mubit-gpt-5.4",
+    "tasks_included": 6,
+    "normalized_reward_mean": 0.19020891159420186,
+    "normalized_gain_mean": 0.19020891159420186,
+    "total_cost_usd_mean": 14.4890461,
+    "mean_task_cost_usd": 2.4148410166666667,
+    "rank": 1,
+    "display_name": "mubit-gpt-5.4",
+    "system_label": "mubit-gpt-5.4",
+    "system_class": "mubit-gpt-5.4",
+    "model": ""
    },
-   {
-    "name": "Stateless baseline",
-    "color": "#94a3b8",
-    "values": [
-     0.2391,
-     0.2683,
-     0.2157,
-     0.2241,
-     0.2391,
-     0.2157,
-     0.2797,
-     0.2157,
-     0.2221,
-     0.2481,
-     0.2404,
-     0.2391,
-     0.2193,
-     0.2797,
-     0.192,
-     0.1974,
-     0.2239,
-     0.227,
-     0.223,
-     0.2474,
-     0.2157,
-     0.2481,
-     0.2157,
-     0.2157,
-     0.2244,
-     0.2391,
-     0.2481,
-     0.2481,
-     0.2312,
-     0.2088,
-     0.2157,
-     0.2085,
-     0.2095,
-     0.2027,
-     0.2481,
-     0.2139,
-     0.2138,
-     0.2683,
-     0.1973,
-     0.2578,
-     0.2797,
-     0.1926,
-     0.2397,
-     0.2216,
-     0.2578,
-     0.2274,
-     0.2683,
-     0.2481,
-     0.2481,
-     0.2287,
-     0.2177,
-     0.2683,
-     0.223,
-     0.2308,
-     0.2481,
-     0.2578,
-     0.2578,
-     0.2683,
-     0.1955,
-     0.2578,
-     0.2797,
-     0.2114,
-     0.2166,
-     0.2578,
-     0.1981,
-     0.2155,
-     0.2797,
-     0.2552,
-     0.2088,
-     0.2212,
-     0.2541,
-     0.2082,
-     0.3204,
-     0.2683,
-     0.2797,
-     0.26,
-     0.2578,
-     0.2129,
-     0.2797,
-     0.1997,
-     0.2079,
-     0.2797,
-     0.2166,
-     0.223,
-     0.2797,
-     0.2004,
-     0.2308,
-     0.2017,
-     0.2797,
-     0.2683
-    ]
+   "tasks": {
+    "blind_spectrum_monitoring": {
+     "reward_mean": 50.7181,
+     "baseline_reward": 21.2487,
+     "normalized_reward_mean": 0.4286377130323354,
+     "n_runs": 5
+    },
+    "codebase_adaptation": {
+     "reward_mean": 9.78,
+     "baseline_reward": 8.35,
+     "normalized_reward_mean": 0.13427230046948357,
+     "n_runs": 5
+    },
+    "cohort_studies": {
+     "reward_mean": -0.6279956,
+     "baseline_reward": -1.1589260000000001,
+     "normalized_reward_mean": 0.12058471493988372,
+     "n_runs": 5
+    },
+    "database_exploration": {
+     "reward_mean": 6.666666666666666,
+     "baseline_reward": 5.866666666666667,
+     "normalized_reward_mean": 0.02343749999999998,
+     "n_runs": 5
+    },
+    "exploitable_poker": {
+     "reward_mean": 107.08,
+     "baseline_reward": 80.3,
+     "normalized_reward_mean": 0.02530712530712531,
+     "n_runs": 5
+    },
+    "sales_prediction": {
+     "reward_mean": 7.74632,
+     "baseline_reward": 4.8024,
+     "normalized_reward_mean": 0.40901411581638325,
+     "n_runs": 5
+    }
    }
-  ],
-  "stage_boundaries": [
-   {
-    "x": 30,
-    "label": "Stage 1\u21922: Narrowband channels appear"
-   },
-   {
-    "x": 60,
-    "label": "Stage 2\u21923: Full grid active"
-   }
-  ]
- },
- "chart_3_bsm_optimization_progression": {
-  "title": "BSM Optimization: Impact of Each Adapter Improvement",
-  "subtitle": "Each bar shows normalized gain after a specific optimization.",
-  "type": "bar_chart",
-  "x_axis": "Adapter Version",
-  "y_axis": "Normalized Gain (%)",
-  "data": [
-   {
-    "version": "v1: Prose lessons\n(Mubit memory)",
-    "gain": 11.6,
-    "iou": 31.0
-   },
-   {
-    "version": "v2: Structured\ntransmitter registry",
-    "gain": 31.8,
-    "iou": 63.8
-   },
-   {
-    "version": "v4: + False-positive\nfilter",
-    "gain": 53.7,
-    "iou": 64.7
-   }
-  ]
- },
- "chart_4_bsm_per_run_consistency": {
-  "title": "BSM Per-Run Consistency",
-  "subtitle": "Each dot is one run. Tighter clustering = more consistent.",
-  "type": "scatter_or_dot_plot",
-  "x_axis": "Run",
-  "y_axis": "Spectrum Coverage (IoU)",
-  "data": {
-   "Mubit v4": [
-    0.6022,
-    0.6871,
-    0.6512
-   ],
-   "Mubit v2": [
-    0.5967,
-    0.7106,
-    0.608
-   ],
-   "Mubit v1": [
-    0.3158,
-    0.3232,
-    0.2909
-   ],
-   "ICL (paper avg)": 0.51,
-   "Mem0 (paper avg)": 0.37,
-   "ACE (paper avg)": 0.22
   }
  },
- "chart_5_database_drift_adaptation": {
-  "title": "Database Exploration: Schema Drift Adaptation",
-  "subtitle": "Mubit adapts (+32% gain increase). Mem0 degrades from stale extracted facts.",
-  "type": "line_chart",
-  "x_axis": "Question Number",
-  "y_axis": "Mean Gain per Question",
-  "x_values_pre": [
-   1,
-   2,
-   3,
-   4,
-   5,
-   6,
-   7,
-   8,
-   9,
-   10,
-   11,
-   12,
-   13,
-   14,
-   15,
-   16,
-   17,
-   18,
-   19,
-   20
-  ],
-  "x_values_post": [
-   21,
-   22,
-   23,
-   24,
-   25,
-   26,
-   27,
-   28,
-   29,
-   30,
-   31,
-   32,
-   33,
-   34,
-   35,
-   36,
-   37,
-   38,
-   39,
-   40
-  ],
-  "pre_migration_gain_mubit": 0.1122,
-  "post_migration_gain_mubit": 0.1478,
-  "pre_migration_gain_icl": 0.0844,
-  "post_migration_gain_icl": 0.1355,
-  "drift_line_x": 20,
-  "drift_label": "Schema Migration",
-  "pre_migration_gain_mem0": 0.25,
-  "post_migration_gain_mem0": 0.15
- },
- "chart_6_memory_systems_comparison": {
-  "title": "Memory System Comparison on CL-Bench",
-  "subtitle": "Does the memory system beat plain in-context learning?",
-  "type": "table_or_infographic",
-  "data": [
-   {
-    "system": "Mubit",
-    "beats_icl": true,
-    "bsm_iou": "71%",
-    "db_efficiency": "18%",
-    "cost": "Low",
-    "architecture": "Typed cognitive memory (SDM + graph + semantic fusion)"
+ "cost_anatomy": {
+  "basis": "per stateful run, mean of 5; leaderboard accounting (baselines excluded); provider list prices incl. cache-read rates",
+  "rates": {
+   "gpt-5.4": {
+    "input_per_mtok": 2.5,
+    "output_per_mtok": 15.0,
+    "cache_read_per_mtok": 0.25
    },
-   {
-    "system": "ICL",
-    "beats_icl": null,
-    "bsm_iou": "51%",
-    "db_efficiency": "17%",
-    "cost": "Low",
-    "architecture": "Full conversation history (no memory system)"
-   },
-   {
-    "system": "Mem0",
-    "beats_icl": false,
-    "bsm_iou": "37%",
-    "db_efficiency": "17%",
-    "cost": "Low",
-    "architecture": "LLM-extracted facts \u2192 vector search"
-   },
-   {
-    "system": "ACE",
-    "beats_icl": false,
-    "bsm_iou": "22%",
-    "db_efficiency": "10%",
-    "cost": "$62.8/run",
-    "architecture": "Evolving context playbook"
-   },
-   {
-    "system": "ICL Notepad",
-    "beats_icl": false,
-    "bsm_iou": "\u2014",
-    "db_efficiency": "\u2014",
-    "cost": "Medium",
-    "architecture": "Model-curated scratchpad"
+   "gemini-3.7-flash": {
+    "input_per_mtok": 0.75,
+    "output_per_mtok": 3.75,
+    "cache_read_per_mtok": 0.075
    }
-  ]
- },
- "summary_stats": {
-  "bsm": {
-   "mubit_gain": 53.7,
-   "mubit_iou": 64.7,
-   "mubit_best_run_iou": 71.1,
-   "stateless_iou": 23.7,
-   "improvement_over_stateless": "173%",
-   "paper_best_icl_iou": 51,
-   "paper_mem0_iou": 37,
-   "paper_ace_iou": 22
   },
-  "database": {
-   "mubit_gain": 13.7,
-   "mubit_post_migration_gain": 14.8,
-   "mubit_pre_migration_gain": 11.2,
-   "mubit_efficiency": 18,
-   "stateless_efficiency": 5,
-   "improvement_over_stateless": "260%",
-   "drift_adaptation": "+32% gain increase post-migration",
-   "mem0_drift": "DEGRADES (stale facts cause negative drift)",
-   "key_advantage": "Mubit's semantic lessons survive schema renames; Mem0's extracted facts break"
+  "mubit_gemini37": {
+   "per_task": {
+    "bsm": {
+     "input_m": 0.12,
+     "output_m": 0.06,
+     "cost": 0.33
+    },
+    "codebase": {
+     "input_m": 10.35,
+     "output_m": 0.07,
+     "cost": 8.01
+    },
+    "cohort": {
+     "input_m": 0.67,
+     "output_m": 0.07,
+     "cost": 0.76
+    },
+    "database": {
+     "input_m": 2.73,
+     "output_m": 0.02,
+     "cost": 2.14
+    },
+    "poker": {
+     "input_m": 6.52,
+     "output_m": 0.02,
+     "cost": 4.97
+    },
+    "sales": {
+     "input_m": 2.1,
+     "output_m": 0.1,
+     "cost": 1.96
+    }
+   },
+   "total": {
+    "input_m": 22.48,
+    "cached_m": 0.0,
+    "output_m": 0.35,
+    "input_cost": 16.86,
+    "output_cost": 1.3,
+    "total": 18.16
+   }
   },
-  "poker": {
-   "mubit_gain": 10.8,
-   "v5_gain": -8.9,
-   "v10_gain": 3.9,
-   "v11_gain": 10.8,
-   "score_mean": 0.404,
-   "positive_hands": "47/120",
-   "approach": "Session-stateful continuity + Mubit opponent observations",
-   "verdict": "Session calibration + opponent intelligence = +10.8% gain"
+  "mubit_gpt54": {
+   "per_task": {
+    "bsm": {
+     "input_m": 0.11,
+     "cached_m": 0.0,
+     "output_m": 0.04,
+     "cost": 0.93
+    },
+    "codebase": {
+     "input_m": 2.01,
+     "cached_m": 1.32,
+     "output_m": 0.05,
+     "cost": 2.81
+    },
+    "cohort": {
+     "input_m": 2.2,
+     "cached_m": 1.2,
+     "output_m": 0.1,
+     "cost": 4.32
+    },
+    "database": {
+     "input_m": 0.98,
+     "cached_m": 0.41,
+     "output_m": 0.02,
+     "cost": 1.75
+    },
+    "poker": {
+     "input_m": 0.36,
+     "cached_m": 0.0,
+     "output_m": 0.04,
+     "cost": 1.43
+    },
+    "sales": {
+     "input_m": 1.51,
+     "cached_m": 0.72,
+     "output_m": 0.07,
+     "cost": 3.24
+    }
+   },
+   "total": {
+    "input_m": 7.16,
+    "cached_m": 3.65,
+    "output_m": 0.32,
+    "input_cost": 9.67,
+    "output_cost": 4.81,
+    "total": 14.49
+   }
+  },
+  "icl_gpt54_reference": {
+   "input_m": 43.4,
+   "cached_m": 41.6,
+   "output_m": 0.23,
+   "total": 18.39
   }
- },
- "chart_7_mubit_vs_mem0_drift": {
-  "title": "Concept Drift: Mubit vs Mem0 on Database Exploration",
-  "subtitle": "When the schema changes at Q20, Mem0's brittle facts break. Mubit's semantic lessons survive.",
-  "type": "grouped_bar",
-  "x_axis": "Phase",
-  "y_axis": "Mean Normalized Gain",
-  "data": [
-   {
-    "phase": "Pre-Migration\n(Q1-Q20)",
-    "Mubit": 11.2,
-    "Mem0": 25.0
-   },
-   {
-    "phase": "Post-Migration\n(Q21-Q40)",
-    "Mubit": 14.8,
-    "Mem0": 15.0
-   },
-   {
-    "phase": "Drift Delta\n(change)",
-    "Mubit": 3.6,
-    "Mem0": -10.0
-   }
-  ]
- },
- "chart_8_sales_model_scaling": {
-  "title": "Sales Prediction: Mubit Across Three Model Tiers",
-  "subtitle": "Memory lift is robust (15/15 stateful runs beat baseline) and model-scaled.",
-  "type": "grouped_bar",
-  "x_axis": "Model configuration",
-  "y_axis": "Score (WAPE-skill)",
-  "data": [
-   {
-    "config": "gpt-5",
-    "baseline": 0.2,
-    "stateful_mean": 0.601,
-    "stateful_std": 0.009,
-    "raw_gain": 0.401,
-    "normalized_gain": 0.501,
-    "runs": [
-     0.594,
-     0.597,
-     0.597,
-     0.6,
-     0.616
-    ]
-   },
-   {
-    "config": "gemini-3-flash",
-    "baseline": 0.506,
-    "stateful_mean": 0.776,
-    "stateful_std": 0.043,
-    "raw_gain": 0.271,
-    "normalized_gain": 0.547,
-    "runs": [
-     0.845,
-     0.762,
-     0.769,
-     0.728,
-     0.779
-    ]
-   },
-   {
-    "config": "gemini-2.5-flash",
-    "baseline": 0.214,
-    "stateful_mean": 0.482,
-    "stateful_std": 0.115,
-    "raw_gain": 0.268,
-    "normalized_gain": 0.341,
-    "runs": [
-     0.355,
-     0.613,
-     0.584,
-     0.469,
-     0.389
-    ]
-   }
-  ],
-  "note": "Same-family comparison: Mubit+gemini-3-flash (0.547 norm) beats paper's icl-gemini-3-flash (0.478 norm) with higher absolute stateful score (0.776)."
- },
- "chart_9_cohort_everyone_zero": {
-  "title": "Cohort Studies: Every System's Stateful Arm Is Negative Bits",
-  "subtitle": "Positive 'gains' are baseline-relative artifacts. Mubit run 5 (+0.051) is the only positive stateful score ever observed.",
-  "type": "scatter_with_gain",
-  "y_axis": "Stateful score (bits)",
-  "data": [
-   {
-    "system": "Mubit (gemini-3.7)",
-    "baseline": -0.015,
-    "stateful_runs": [
-     -0.004,
-     -0.014,
-     -0.001,
-     -0.001,
-     0.051
-    ],
-    "gain": 0.021,
-    "sigma": 0.025
-   },
-   {
-    "system": "Mubit (gpt-5)",
-    "baseline": -0.034,
-    "stateful_runs": [
-     -0.038,
-     -0.062,
-     -0.033,
-     -0.032,
-     -0.044
-    ],
-    "gain": -0.007,
-    "sigma": 0.012
-   },
-   {
-    "system": "Mem0 (GPT-5.4)",
-    "baseline": -0.063,
-    "stateful_runs": [
-     -0.053,
-     -0.016,
-     0.011,
-     -0.091,
-     -0.019
-    ],
-    "gain": 0.03,
-    "sigma": 0.039
-   },
-   {
-    "system": "ICL (Gemini 3 Flash)",
-    "baseline": -0.059,
-    "stateful_runs": [
-     -0.035,
-     -0.028,
-     -0.052,
-     -0.017,
-     -0.036
-    ],
-    "gain": 0.025,
-    "sigma": 0.013
-   },
-   {
-    "system": "ACE (GPT-5.4)",
-    "baseline": -0.024,
-    "stateful_runs": [
-     0.005,
-     -0.022,
-     0.005,
-     0.003,
-     -0.01
-    ],
-    "gain": 0.02,
-    "sigma": 0.012
-   },
-   {
-    "system": "ICL (GPT-5.4)",
-    "baseline": -0.007,
-    "stateful_runs": [
-     -0.054,
-     -0.009,
-     -0.043,
-     -0.035,
-     0.002
-    ],
-    "gain": -0.021,
-    "sigma": 0.024
-   },
-   {
-    "system": "Claude-Code (Sonnet 4.6)",
-    "baseline": -0.037,
-    "stateful_runs": [
-     -0.047,
-     -0.113,
-     -0.012,
-     -0.042,
-     -0.122
-    ],
-    "gain": -0.03,
-    "sigma": 0.048
-   }
-  ],
-  "source": "Paper artifacts: final_results/runs/*/task_artifacts.json.gz (instance_outcomes)",
-  "note": "No system's gain clears 2-sigma. Task is unsolved by the field."
  }
 }

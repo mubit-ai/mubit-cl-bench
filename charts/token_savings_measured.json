@@ -1,0 +1,28 @@
+{
+  "title": "Measured Token Efficiency: Mubit vs Full Context Replay (CL-Bench)",
+  "description": "Empirically measured mean input tokens per stateful run, same model (gpt-5.4), same tasks. ICL figures from the official CL-Bench artifacts (final_results/runs/icl-gpt-5.4); Mubit figures from the runs submitted in PRs #12/#14. Source: per-run usage telemetry (input/cached/output tokens, call counts).",
+  "provenance": {
+    "icl_source": "official CL-Bench artifacts, icl-gpt-5.4",
+    "mubit_source": "mubit-cl-bench submissions PR #12 (gemini-3.7-flash) and PR #14 (gpt-5.4)",
+    "method": "mean input_tokens across 5 stateful runs per task, per system"
+  },
+  "per_task": [
+    {"task": "exploitable_poker",       "icl_gpt54_input_tokens": 15608954, "mubit_gpt54_input_tokens": 360119,  "saved_pct": 97.7},
+    {"task": "blind_spectrum_monitoring","icl_gpt54_input_tokens": 4384346, "mubit_gpt54_input_tokens": 109010, "saved_pct": 97.5},
+    {"task": "codebase_adaptation",     "icl_gpt54_input_tokens": 9969272, "mubit_gpt54_input_tokens": 2009728,"saved_pct": 79.8},
+    {"task": "cohort_studies",          "icl_gpt54_input_tokens": 7395634, "mubit_gpt54_input_tokens": 2197268,"saved_pct": 70.3},
+    {"task": "database_exploration",    "icl_gpt54_input_tokens": 3030103, "mubit_gpt54_input_tokens": 978489, "saved_pct": 67.7},
+    {"task": "sales_prediction",        "icl_gpt54_input_tokens": 3044071, "mubit_gpt54_input_tokens": 1505229,"saved_pct": 50.6}
+  ],
+  "suite_totals": {
+    "icl_gpt54_input_tokens_per_run": 43432379,
+    "mubit_gpt54_input_tokens_per_run": 7159843,
+    "saved_pct": 83.5,
+    "mubit_gemini37_input_tokens_per_run": 22481089
+  },
+  "memory_overhead_vs_own_baseline": {
+    "note": "Mubit stateful vs its own stateless baseline, mean input tokens per run. Negative = memory paid for itself in fewer steps.",
+    "gpt54": {"bsm": 36.3, "codebase": -5.7, "cohort": -7.3, "db": -12.7, "poker": 8.9, "sales": 60.1},
+    "gemini37": {"bsm": 32.4, "codebase": 20.0, "cohort": -43.1, "db": 53.7, "poker": 3002.9, "sales": 4.6}
+  }
+}

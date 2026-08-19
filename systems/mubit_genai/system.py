@@ -154,9 +154,42 @@ class MubitGenAISystem(MubitMemorySystem):
         if self._genai_client is None:
             raise RuntimeError("google-genai client not initialized (missing API key?)")
 
+        # Pass a sanitized JSON-schema dict rather than the pydantic class:
+        # 1) genai's internal Schema model rejects non-string enum members
+        #    (sales years are Literal[2027, ...] ints), so enums are stringified
+        #    for serving and restored on the response before validation.
+        # 2) Very large schemas (cohort's 108-field submission) can exceed the
+        #    serving-side constraint budget; those retry schema-less with the
+        #    schema embedded in the system prompt instead.
+        import copy
+        import json as _json
+
+        original_js = response_schema.model_json_schema()
+
+        def _sanitize(node: Any) -> Any:
+            if isinstance(node, dict):
+                enum = node.get("enum")
+                if isinstance(enum, list) and any(not isinstance(v, str) for v in enum):
+                    node["enum"] = [str(v) for v in enum]
+                    if node.get("type") in ("integer", "number"):
+                        node["type"] = "string"
+                const = node.get("const")
+                if isinstance(const, (int, float)) and not isinstance(const, bool):
+                    node["const"] = str(const)
+                    if node.get("type") in ("integer", "number"):
+                        node["type"] = "string"
+                for v in node.values():
+                    _sanitize(v)
+            elif isinstance(node, list):
+                for v in node:
+                    _sanitize(v)
+
+        sanitized_js = copy.deepcopy(original_js)
+        _sanitize(sanitized_js)
+
         config: dict[str, Any] = {
             "response_mime_type": "application/json",
-            "response_schema": response_schema,
+            "response_schema": sanitized_js,
             "temperature": self.temperature,
         }
         if self.max_tokens:
@@ -200,6 +233,22 @@ class MubitGenAISystem(MubitMemorySystem):
                 _time.sleep(2 ** attempt)
             except Exception as exc:
                 msg = str(exc)
+                # Oversized schemas blow the serving-side constraint budget.
+                # Retry schema-less with the schema embedded in the prompt.
+                if "too many states" in msg and "response_schema" in config:
+                    logger.warning(
+                        "genai schema too large for serving; retrying schema-less "
+                        "with schema embedded in prompt"
+                    )
+                    compact = _json.dumps(original_js, separators=(",", ":"))
+                    config = dict(config)
+                    config.pop("response_schema", None)
+                    config["system_instruction"] = (
+                        system_content
+                        + "\n\nRespond with ONLY a JSON value matching this JSON "
+                        + "schema (no prose, no markdown):\n" + compact
+                    )
+                    continue
                 is_transient = any(
                     code in msg
                     for code in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "500", "502", "504",
@@ -217,8 +266,104 @@ class MubitGenAISystem(MubitMemorySystem):
                 )
                 _time.sleep(wait)
 
-        # Parse the structured JSON response.
-        parsed = response_schema.model_validate_json(response.text)
+        # Parse the structured JSON response, restoring original literal types
+        # (genai served stringified enums per the sanitize step above).
+        def _resolve_ref(spec: Any) -> Any:
+            # Resolve {"$ref": "#/$defs/X"} against the schema root.
+            if (
+                isinstance(spec, dict)
+                and isinstance(spec.get("$ref"), str)
+                and spec["$ref"].startswith("#/$defs/")
+            ):
+                target = original_js.get("$defs", {}).get(spec["$ref"].split("/")[-1])
+                if isinstance(target, dict):
+                    return target
+            return spec
+
+        def _restore(node: Any, spec: Any) -> Any:
+            spec = _resolve_ref(spec)
+            if not isinstance(spec, dict):
+                return node
+            enum = spec.get("enum")
+            if isinstance(enum, list) and isinstance(node, str):
+                for member in enum:
+                    if not isinstance(member, str) and str(member) == node:
+                        return member
+                return node
+            const = spec.get("const")
+            if isinstance(const, (int, float)) and isinstance(node, str) and str(const) == node:
+                return const
+            if isinstance(node, dict):
+                props = spec.get("properties") or {}
+                return {
+                    k: (_restore(v, props[k]) if k in props else v)
+                    for k, v in node.items()
+                }
+            if isinstance(node, list):
+                items = spec.get("items")
+                if isinstance(items, dict):
+                    return [_restore(v, items) for v in node]
+            return node
+
+        # Parse with malformed-JSON retries: some Gemini releases emit
+        # truncated JSON under load (e.g. "Unterminated string"). A parse
+        # failure must re-call the API rather than kill the run — the outer
+        # retry loop only covers transport errors, not bad payloads.
+        parse_retries = 3
+        repair_contents = None
+        for parse_attempt in range(parse_retries):
+            try:
+                data = _json.loads(response.text or "")
+                data = _restore(data, original_js)
+                parsed = response_schema.model_validate(data)
+                break
+            except Exception as parse_exc:
+                if parse_attempt == parse_retries - 1:
+                    raise
+                logger.warning(
+                    "genai returned malformed JSON (attempt %d/%d): %s — retrying",
+                    parse_attempt + 1, parse_retries, str(parse_exc)[:120],
+                )
+                if repair_contents is None:
+                    # Echo the bad reply back for repair — but only if the
+                    # model actually produced text; an empty/None text part
+                    # is rejected by the API ("data must have one
+                    # initialized field"), so echo a placeholder instead.
+                    bad_reply = (response.text or "").strip() or "(empty reply)"
+                    repair_contents = [
+                        *contents,
+                        {"role": "model", "parts": [{"text": bad_reply}]},
+                        {"role": "user", "parts": [{
+                            "text": "Your previous reply was truncated or invalid "
+                                    "JSON. Return ONE complete, valid JSON object "
+                                    "matching the schema. No prose."
+                        }]},
+                    ]
+                try:
+                    with ThreadPoolExecutor(max_workers=1) as ex:
+                        future = ex.submit(
+                            self._genai_client.models.generate_content,
+                            model=self.model,
+                            contents=repair_contents,
+                            config=config,
+                        )
+                        response = future.result(timeout=call_timeout)
+                except Exception as repair_exc:
+                    # If the repair call itself fails (e.g. 400), fall back to
+                    # the original contents for the next attempt.
+                    logger.warning(
+                        "repair call failed (%s); retrying with original contents",
+                        str(repair_exc)[:120],
+                    )
+                    repair_contents = contents
+                    with ThreadPoolExecutor(max_workers=1) as ex:
+                        future = ex.submit(
+                            self._genai_client.models.generate_content,
+                            model=self.model,
+                            contents=contents,
+                            config=config,
+                        )
+                        response = future.result(timeout=call_timeout)
 
         # Build UsageEvent from usage metadata.
         usage_event = None

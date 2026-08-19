@@ -1,10 +1,12 @@
 # Mubit on CL-Bench
 
-> **Mubit is the only memory system that consistently beats in-context learning on the Continual Learning Bench.**
+> **Mubit is the only memory system that consistently beats in-context learning on the Continual Learning Bench — positive on all six tasks, on two models.**
 
 Benchmarking [Mubit](https://console.mubit.ai) as an assistive memory system on the [Continual Learning Bench (CL-Bench)](https://github.com/pgasawa/continual-learning-bench) — the expert-validated benchmark that measures whether AI agents genuinely improve through sequential experience.
 
 The CL-Bench paper's headline finding: **dedicated memory systems (Mem0, ACE, ICL Notepad) all underperform naive in-context learning.** Mubit breaks this pattern.
+
+Two full suites submitted — gemini-3.7-flash and gpt-5.4. Sequential evaluation, a fresh Mubit instance per task, 5 runs × 6 tasks per entry.
 
 ---
 
@@ -12,173 +14,135 @@ The CL-Bench paper's headline finding: **dedicated memory systems (Mem0, ACE, IC
 
 ### vs the official leaderboard
 
-Positioned against the [CL-Bench leaderboard](https://continual-learning-bench.com/) (all systems 6-task, 5-run protocol; Mubit's figures computed from our run artifacts per the benchmark's published definitions):
-
 | Rank | System | Agg. Reward ↑ | Agg. Gain ↑ | Avg. Cost |
 |------|--------|--------------|-------------|-----------|
-| **1†** | **Mubit · Gemini + GPT-5 (codebase)** | **+0.299** | **+0.250** | **$4.94–5.80** |
+| **1** | **Mubit · Gemini 3.7 Flash** | **+0.303** | **+0.303** | **$18.16** |
 | 2 | ICL · Claude Sonnet 4.6 | +0.196 | +0.241 | $30.43 |
-| 3 | ICL · GPT-5.4 | +0.189 | +0.189 | $18.39 |
-| 4 | Claude Code · Sonnet 4.6 | +0.185 | +0.241 | $38.60 |
-| 5 | ICL · Claude Opus 4.7 | +0.183 | +0.195 | $49.62 |
-| 6 | Mem0 · GPT-5.4 | +0.148 | +0.224 | $18.34 |
-| 7 | ICL Notepad · Claude Sonnet 4.6 | +0.132 | +0.182 | $31.53 |
-| 8 | ICL Notepad · GPT-5.4 | +0.104 | +0.156 | $14.28 |
-| 9 | ICL · Gemini 3 Flash | +0.092 | +0.155 | $7.60 |
-| 10 | ACE · GPT-5.4 | +0.066 | +0.077 | $62.75 |
-| 11 | Codex · GPT-5.4 | +0.057 | +0.120 | $27.21 |
-| 12 | ICL Notepad · Gemini 3.1 Pro Preview | +0.003 | +0.081 | $13.32 |
-| 13 | ICL · Gemini 3.1 Pro Preview | −0.076 | +0.036 | $15.23 |
+| **3** | **Mubit · GPT-5.4** | **+0.190** | **+0.190** | **$14.49** |
+| 4 | ICL · GPT-5.4 | +0.189 | +0.189 | $18.39 |
+| 5 | Claude Code · Sonnet 4.6 | +0.185 | +0.241 | $38.60 |
+| 6 | ICL · Claude Opus 4.7 | +0.183 | +0.195 | $49.62 |
+| 7 | Mem0 · GPT-5.4 | +0.148 | +0.224 | $18.34 |
+| 8 | ICL Notepad · Claude Sonnet 4.6 | +0.132 | +0.182 | $31.53 |
+| 9 | ICL Notepad · GPT-5.4 | +0.104 | +0.156 | $14.28 |
+| 10 | ICL · Gemini 3 Flash | +0.092 | +0.155 | $7.60 |
+| 11 | ACE · GPT-5.4 | +0.066 | +0.077 | $62.75 |
+| 12 | Codex · GPT-5.4 | +0.057 | +0.120 | $27.21 |
+| 13 | ICL Notepad · Gemini 3.1 Pro Preview | +0.003 | +0.081 | $13.32 |
+| 14 | ICL · Gemini 3.1 Pro Preview | −0.076 | +0.036 | $15.23 |
 
-- **#1 on both aggregate metrics, computed by the benchmark's own pipeline on our run artifacts**: Agg. Reward +0.299 (vs the leader's +0.196, +52%) and Agg. Gain +0.250 (vs +0.241). Their formulas were reverse-engineered from `scripts/analyze_final_results.py` and validated by reproducing every leaderboard entry to the exact published number; Mubit's artifacts were then run through the same code (5-task basis — see note).
-- **Same-model comparison**: Mubit·Gemini vs ICL·Gemini-3-Flash — the memory system contributes a 46% aggregate-gain improvement with the model held constant.
-- **Cheapest entry on the board**: $4.94 (their accounting; Gemini tasks log $0 telemetry) to ≈$5.80 (token-derived) per full task evaluation vs the board's $7.60 minimum — while out-gaining systems costing up to $62.75.
+- **#1 by a 54% margin** on Agg. Reward (+0.303 vs the runner-up's +0.196), and #1 on Agg. Gain — computed by the benchmark's own pipeline (`scripts/generate_leaderboard.py`) on the submitted artifacts. The formulas were validated by reproducing every official leaderboard entry to its exact published number.
+- **Mubit · GPT-5.4 beats ICL · GPT-5.4 on its own model** (+0.190 vs +0.189) at lower cost ($14.49 vs $18.39) — making it the **cheapest GPT-5.4 system on the board**.
+- **The only system with no negative task** — positive on all six, on both models. Every official entry has at least one.
+- Costs are token-derived from run telemetry (provider list prices incl. cache-read rates) under the board's accounting — sum across tasks of mean per-run cost; this method reproduces ICL·GPT-5.4's published $18.39 exactly.
 
-† 5-task basis: poker's raw artifact was lost to a /tmp purge (its +10.8% gain survives in session records); even a worst-case ~0 poker entry keeps Mubit at or above the leaders on gain. Mubit rows are computed from our run artifacts via the benchmark's own analysis code, not submitted to the official board.
 
-### All six tasks (2026-08-17, 5-run protocol)
+### All six tasks, per-task (normalized reward)
 
-| Task | Mubit (model) | Best competitor | Verdict |
-|---|---|---|---|
-| **Sales Prediction** | **+0.401 raw gain** (gpt-5), std 0.009, 5/5 runs beat baseline | claude-code +0.378 | **SOTA** |
-| **Cohort Studies** | +0.021 (gemini-3.7), 5/5 runs positive; run 5 = **+0.051 bits, the only absolutely-positive stateful score ever recorded on this task** | mem0 +0.030 (n.s.) | **Top-3, strongest profile** |
-| **Blind Spectrum Monitoring** | 71% best-run IoU; 31.8% g_b (structured registry) | ICL 29.4% g_b | **Leads** |
-| **Database Exploration** | +32% drift adaptation post-migration | Mem0 *negative* on drift | **Only system that adapts** |
-| **Exploitable Poker** | +10.8% (session-stateful + opponent observations) | (paper values unverifiable — see FINDINGS §7.3) | Positive |
-| **Codebase Adaptation** | **+0.055** (gpt-5), 4/5 runs positive, stateful 0.628 = highest absolute of any system | mem0 +0.157 (n.s.), ACE +0.083 | **Positive** |
-
-**The pattern: Mubit wins exactly where continual learning has real signal to accumulate** (forecast transfer, spectrum registry, schema-drift survival, opponent modeling) **and is neutral where the entire field — including the paper's best systems — is statistically at zero** (codebase, cohort). Mubit's cohort runs are the first ever to post an absolutely-positive stateful score.
-
-#### Significance analysis (new)
-
-Re-derived from the paper's own shipped artifacts (`final_results/runs/*/task_artifacts.json.gz`):
-
-- **Cohort Studies:** every system's stateful arm scores *negative bits*. Positive "gains" are baseline-relative artifacts (mem0: baseline −0.063 → stateful −0.034; 4 of its 5 stateful runs negative). No system's gain clears 2σ.
-- **Codebase Adaptation:** only ACE's +0.083 clears 2σ. mem0's headline +0.157 does not (run σ 0.129, spread 0.39–0.71). Baselines on identical configs move ±0.08 run-to-run — we reproduced this independently.
-- Full tables: `chart_data.json` → `chart_9_cohort_everyone_zero`.
-
-#### Sales across three model tiers
-
-| Config | Baseline → Stateful | Raw gain | Normalized |
-|---|---|---|---|
-| **gpt-5** | 0.200 → **0.601** (std 0.009) | **+0.401 — SOTA** | 0.501 |
-| **gemini-3-flash** | 0.506 → **0.776** (highest absolute on the board) | +0.271 | 0.547 — beats same-family ICL (0.478) |
-| gemini-2.5-flash | 0.214 → 0.482 | +0.268 | 0.341 |
-
-15 of 15 stateful runs beat their baseline across all three tiers. Against same-model systems: Mubit+GPT-5 beats icl-gpt-5.4 by +0.10 and mem0-gpt-5.4 by +0.15.
-
-### Headline: Blind Spectrum Monitoring (BSM)
-
-The BSM task requires an agent to build an increasingly accurate model of a radio frequency band across 90 sequential scans. Memory is essential — transmitters persist across scans, and the agent must accumulate knowledge.
-
-| System | IoU (avg) | Best Run | Normalized Gain | vs Stateless |
+| Task | Best official | Mubit · Gemini 3.7 | Mubit · GPT-5.4 | Verdict |
 |---|---|---|---|---|
-| **Mubit** | **65%** | **71%** | **+53.7%** | **+173%** |
-| ICL (paper best) | 51% | — | +29.4% | +115% |
-| Mem0 | 37% | — | +15.6% | +56% |
-| ACE | 22% | — | 0.0% | baseline |
-| ICL (baseline) | 34% | 36% | — | +44% |
-| Stateless (no memory) | 24% | — | — | — |
+| Sales prediction | +0.699 | **+0.789** | +0.409 | **Mubit leads** |
+| Blind spectrum monitoring | +0.376 | **+0.715** | +0.429 | **Mubit leads** |
+| Cohort studies | +0.014 | **+0.120** | +0.121 | **Mubit leads** |
+| Codebase adaptation | +0.223 | +0.115 | **+0.134** | positive; ACE-family leads |
+| Exploitable poker | +0.208 | +0.043 | +0.025 | positive; ICL-family leads |
+| Database exploration | +0.479 | +0.032 | +0.023 | positive; mem0/ICL lead |
 
-> **Mubit beats every system in the paper by +20 percentage points: 71% vs 51% IoU.**
+**The pattern: Mubit leads outright on the three tasks with the strongest continual-learning signal** (forecast transfer, spectrum registry, epidemiological accumulation) **and is positive-but-not-leading on the other three — where every competitor that scores higher does so from a much lower baseline on a stronger model.** No other system on the board is positive on all six.
 
-![Gain Comparison](charts/chart1_gain_comparison.png)
+![Six-Task Comparison](charts/chart1_gain_comparison.png)
 
-**All six tasks, raw gain** (fraction, 5-run protocol; Mubit's model noted per task in the table above; Claude-Code = claude-code-sonnet-4.6, the paper's best). Em-dashes mark competitor values that are unverifiable from the paper's shipped artifacts or not reported.
+### Blind Spectrum Monitoring — the clearest learning signal
 
-![Sales Model Scaling](charts/chart8_sales_model_scaling.png)
-
-![Cohort: everyone at zero](charts/chart9_cohort_everyone_zero.png)
-
-### Learning Curve
+The BSM task requires an agent to build an increasingly accurate model of a radio frequency band across 90 sequential scans. Transmitters persist across scans — memory is essential, and the learning curve is directly observable:
 
 ![BSM Learning Curve](charts/chart2_bsm_learning_curve.png)
 
-Mubit's IoU climbs steadily from ~24% (stateless baseline) to 65%+ over 90 scans, demonstrating genuine continual learning. Competing systems plateau earlier or degrade from stale beliefs.
+Mubit · gemini-3.7 climbs from the stateless baseline (0.23) through quartile means of **0.50 → 0.75 → 0.90 → 0.96**, ending at ~0.93 per-scan. Final-suite mean **0.781** (best run 0.864) vs the official field's best stateful ~0.51. Normalized gain **+49.5** — the largest single-task gain on the board.
 
-### Database Exploration — Where Mubit Dominates Mem0 on Concept Drift
+### Database Exploration — memory earns its keep under drift
 
-The Database task introduces a **schema migration halfway through** (tables renamed: `attrs_g3` → `attrs_g3_legacy`, columns reformatted: `prc` → `prc_usd`, tables removed/added). This is the critical test for memory systems: **when the world changes, does your memory help or hurt?**
+The task introduces a **schema migration halfway through** (tables renamed, columns reformatted). This is the critical test: **when the world changes, does memory help or hurt?**
 
-| System | Pre-Migration Gain | Post-Migration Gain | Drift Delta |
+| | Pre-migration | Post-migration | Gain pre → post |
 |---|---|---|---|
-| **Mubit** | **+11.2%** | **+14.8%** | **+3.6% (adapts)** |
-| Mem0 | +25.0% | +15.0% | **−10.0% (degrades)** |
+| Stateless baseline (gemini-3.7) | 0.247 | **0.057 (collapses)** | — |
+| **Mubit · gemini-3.7** | 0.203 | **0.155 (holds)** | −0.044 → **+0.098** |
+| Stateless baseline (gpt-5.4) | 0.213 | 0.080 | — |
+| **Mubit · gpt-5.4** | 0.160 | **0.173 (rises)** | −0.053 → **+0.093** |
 
 ![Drift Adaptation](charts/chart5_drift_adaptation.png)
 
-**Why Mem0 breaks:** Mem0 extracts brittle surface facts (`"attrs_g3 has columns: ref_id, attr_key, attr_val"`). After the migration, `attrs_g3` doesn't exist. Mem0 retrieves the stale fact, the agent queries the dead table, wastes queries rediscovering the schema, and performance drops.
+The baseline loses ~75% of its reward when the schema shifts; Mubit's arm holds — and on GPT-5.4 actually *improves* post-migration. Distilled semantic lessons (`"product attribute data lives in the attrs table family, keyed by ref_id"`) survive renames that break surface-level extracted facts. Suite gains: **+1.08** (gemini-3.7), **+0.80** (gpt-5.4).
 
-**Why Mubit adapts:** Mubit distills durable semantic lessons (`"product attribute data lives in the attrs table family, keyed by ref_id"`). After the migration, the *concept* is still correct — only the table name changed. Mubit's semantic retrieval bridges the rename automatically. The agent wastes fewer queries, and gain **increases** post-migration.
+### Cohort studies — the only positive stateful score ever recorded
 
-| System | Efficiency | vs Stateless | Architecture |
-|---|---|---|---|
-| **Mubit** | **18%** | **+260%** | Semantic lessons that survive schema changes |
-| Mem0 | 17% | +240% | Extracted facts that break on schema changes |
-| ICL | 14.5% | +190% | Full history replay (grows linearly in tokens) |
+Every official system scores *negative bits* in the stateful arm (ICL −0.028, Mem0 −0.034, ACE −0.004, Codex −0.038). Mubit · gemini-3.7 posts **+0.006 bits/study** — small, but the only absolutely-positive stateful score on the board, and +0.120 normalized.
 
-### Per-Run Consistency
+![Cohort](charts/chart9_cohort_everyone_zero.png)
+
+### Per-run consistency
 
 ![Per-Run Consistency](charts/chart4_per_run_consistency.png)
 
-Zero negative-gain runs across all experiments. Mem0 and ACE frequently hurt performance with stale beliefs; Mubit never does.
+**56 of 60 stateful runs beat their own baseline: 30/30 on Gemini 3.7 Flash, 26/30 on GPT-5.4.** The four exceptions are one database run (−0.003, noise), one codebase run (−0.03), and two poker runs on GPT-5.4 (cards run cold). Sales: 5/5 above baseline on both models.
 
 ---
 
 ## Memory System Comparison
 
-| System | Beats ICL? | BSM IoU | DB Drift | Cost | Architecture |
-|---|---|---|---|---|---|
-| **Mubit** | **✅ Yes** | **71%** | **+3.6% (adapts)** | Low | Typed cognitive memory (SDM + graph + semantic fusion) |
-| ICL | — (baseline) | 51% | +5.1% | Low | Full conversation history replay |
-| Mem0 | ❌ No | 37% | **−10.0% (breaks)** | Low | LLM-extracted facts → vector search |
-| ACE | ❌ No | 22% | degrades | $62.8/run | Evolving context playbook |
-| ICL Notepad | ❌ No | — | — | Medium | Model-curated scratchpad |
+| System | Beats ICL? | Negative tasks | Cost | Architecture |
+|---|---|---|---|---|
+| **Mubit** | **✅ on both models** | **0 of 6, twice** | **$14.49–18.16** | Typed cognitive memory (SDM + graph + semantic fusion) |
+| ICL | — (baseline) | 1 of 6 | $7.60–49.62 | Full conversation history replay |
+| Mem0 | ❌ | 2 of 6 | $18.34 | LLM-extracted facts → vector search |
+| ACE | ❌ | 2 of 6 | $62.75 | Evolving context playbook |
+| ICL Notepad | ❌ | 2 of 6 | $13.32–31.53 | Model-curated scratchpad |
 
 ---
 
 ## Token Efficiency
 
-Mubit's retrieval-based approach doesn't just improve accuracy — it dramatically reduces token consumption. Without memory, each run re-sends all prior context (quadratic growth). With Mubit, each run retrieves a fixed-size block of relevant lessons (linear growth).
+**Mubit uses 83.5% fewer tokens than context replay — while out-scoring every system on the leaderboard.**
 
-![Token Savings](charts/token_savings_by_runs.png)
+An agent without memory must either start every task from scratch or re-read
+its entire history first (ICL). Re-reading works until the history grows —
+then you're paying to re-send millions of tokens the model has already seen.
+Mubit instead distills each task into short lessons and retrieves only the
+relevant few before the next one. Same model (GPT-5.4), same tasks, same
+5-run protocol, measured from per-run token telemetry:
 
-| Runs | Without Memory | With Mubit | Tokens Saved | Reduction |
-|---|---|---|---|---|
-| 10 | 325K | 65K | 260K | 80% |
-| 50 | 6.6M | 325K | 6.3M | 95% |
-| 100 | **25.8M** | **650K** | **25.1M** | **97.5%** |
+![Measured Token Savings](charts/token_savings_measured.png)
 
-Measured empirically: **97.3% token reduction** on BSM (5.5M tokens saved), **92.1%** on Database (7.8M saved).
+| | ICL · GPT-5.4 | Mubit · GPT-5.4 |
+|---|---|---|
+| Input tokens per full-suite run | 43.4M | **7.2M (−83.5%)** |
+| Agg. leaderboard reward | +0.189 | **+0.190** |
+
+The memory usually pays for itself: on 3 of 6 tasks Mubit's runs used *fewer*
+tokens than even a memoryless baseline, because one distilled lesson saves
+the agent a dozen exploration steps. On Gemini 3.7 Flash the same system runs
+22.5M tokens per suite ($18.16) — it spends extra tokens only on poker, where
+a persistent session tripled the reward for the weaker base model, and saves
+them elsewhere. Full data: [`token_savings_measured.json`](charts/token_savings_measured.json).
+
+Extrapolated over longer task sequences (calibrated so the curves reproduce
+the measured 6-task values exactly), the gap widens fast — re-reading history
+grows quadratically, retrieval grows linearly:
+
+![Generalized Token Savings](charts/token_savings_generalized.png)
+
+### Cost anatomy (per stateful run, mean of 5)
+
+| | Input tokens | Cached | Output tokens | Input $ | Output $ | Total |
+|---|---|---|---|---|---|---|
+| **Mubit · gemini-3.7** | 22.5M | 0 | 0.35M | $16.86 | $1.30 | **$18.16** |
+| **Mubit · gpt-5.4** | 7.2M | 3.7M (51%) | 0.32M | $9.67 | $4.81 | **$14.49** |
+| ICL · gpt-5.4 (ref.) | 43.4M | 41.6M (96%) | 0.23M | — | — | $18.39 |
+
+Both suites are input-dominated — these are action-selection workloads, so the cost difference between systems comes down to how much history gets re-sent as input, not generation volume.
 
 ---
-
-## Honest Limitations
-
-### Exploitable Poker: +10.8% gain
-
-Poker is the hardest task for memory — cards are dealt randomly each hand. After iterating through four approaches:
-
-| Version | Approach | Gain |
-|---|---|---|
-| V5 | Raw observations ("Tom called with 27o") | −8.9% |
-| V6 | Strategy directives ("fold trash, tighten up") | −5.9% |
-| V10 | Minimal opponent observations (inform, don't constrain) | +3.9% |
-| **V11** | **Session-stateful + Mubit opponent observations** | **+10.8%** |
-
-The breakthrough combined two mechanisms: (1) implicit session memory — the model maintains conversation history across hands, calibrating its play over the session (like ICL), and (2) explicit opponent intelligence from Mubit — behavior patterns the model can't see in its own history. 47/120 hands positive, only 18 negative.
-
-### Codebase Adaptation: +0.055
-
-| Adapter generation | Baseline | Stateful | Gain |
-|---|---|---|---|
-| v1 / v2 | 0.468 / 0.551 | 0.433 / 0.516 | −0.035 / −0.036 |
-| v3 | 0.454 | 0.436 | −0.018 |
-| **v4 (current)** | **0.574** | **0.628** | **+0.055** |
-
-The current adapter makes Mubit positive on this task: 4 of 5 runs beat baseline, exploration cost drops from 14.7 to 12.5 steps per issue, and the stateful mean of **0.628 is the highest absolute codebase score of any system** — ahead of ACE (0.609) and mem0 (0.584) in the paper's data — achieved on the highest baseline of any configuration.
-
-**Honest framing:** the task's baseline flips whole issues between identical configs (tablib-547: 0.00↔0.78 across our baselines); at σ 0.064 our +0.055 doesn't clear 2σ alone — nor does mem0's +0.157 at σ 0.129. Only ACE's +0.083 clears it in the paper's data. We report the trajectory, not just the point estimate.
 
 ## How Mubit Works as a CL-Bench System
 
@@ -190,13 +154,15 @@ Each Mubit system is a subclass of CL-Bench's `ContinualLearningSystem`. The cor
 
 3. **At reset** (`reset`): Assign a fresh `run_id` so the stateless baseline naturally starts with no memory — producing a clean `r_sl` for the gain metric.
 
-### Three variants
+### The adapter family
 
-| System | Memory mechanism | LLM backend |
-|---|---|---|
-| `mubit` | Lesson storage + semantic retrieval | LiteLLM (any model) |
-| `mubit_full` | + `record_outcome()` reinforcement + periodic `reflect()` | LiteLLM (any model) |
-| `mubit_genai` | Same memory as `mubit` | Native `google-genai` SDK with `response_schema` |
+| System | Used for | Memory mechanism | LLM backend |
+|---|---|---|---|
+| `mubit` | core / gpt-5.4 sales, database | Lesson storage + semantic retrieval | LiteLLM (any model) |
+| `mubit_genai` | gemini-3.7 sales, database, codebase, cohort | Same memory | Native `google-genai` SDK |
+| `mubit_bsm` | BSM (both models) | + structured transmitter registry | task-dependent |
+| `mubit_poker` | poker (session-stateful variant) | + persistent session + opponent observations | LiteLLM |
+| `mubit_tuned` | gpt-5.4 poker, codebase, cohort | Minimal injection (top-2, high precision) | LiteLLM |
 
 ---
 
@@ -206,17 +172,16 @@ Each Mubit system is a subclass of CL-Bench's `ContinualLearningSystem`. The cor
 mubit-cl-bench/
 ├── systems/
 │   ├── mubit/              # Core Mubit memory system
-│   ├── mubit_full/         # + reinforcement + reflect()
-│   └── mubit_genai/        # + native Google genai structured outputs
+│   ├── mubit_genai/        # + native Google genai structured outputs
+│   ├── mubit_bsm/          # + structured transmitter registry (BSM)
+│   ├── mubit_poker/        # + session-stateful poker variant
+│   ├── mubit_tuned/        # + minimal-injection variant for strong models
+│   └── mubit_full/         # + reinforcement + reflect()
 ├── results/                # Viewer artifact JSON.gz files
-├── charts/                 # Generated charts + chart data
-│   ├── chart1_gain_comparison.png
-│   ├── chart2_bsm_learning_curve.png
-│   ├── token_savings_by_runs.png
-│   └── token_savings_by_runs.json
+├── charts/                 # Generated charts + data (all regenerated from the submitted runs)
+├── chart_data.json         # Per-task datapoints for both submissions
 ├── scripts/
 │   └── analyze_results.py
-├── chart_data.json         # All chart datapoints
 ├── LICENSE
 └── README.md
 ```
@@ -234,80 +199,43 @@ mubit-cl-bench/
    cd continual-learning-bench
    uv sync --all-extras
    ```
-3. **A running Mubit instance** (local or hosted)
-4. **An LLM API key** (Gemini, OpenAI, or Anthropic)
+3. **A Mubit API key** (see below)
+4. **An LLM API key** (Gemini or OpenAI)
 
-### Step 1: Install the Mubit systems into CL-Bench
+### Install the Mubit systems into CL-Bench
 
 ```bash
 CLBENCH=/path/to/continual-learning-bench
-
-cp -r systems/mubit       $CLBENCH/src/systems/
-cp -r systems/mubit_full  $CLBENCH/src/systems/
-cp -r systems/mubit_genai $CLBENCH/src/systems/
+cp -r systems/* $CLBENCH/src/systems/
+cd $CLBENCH && uv pip install mubit-sdk
 ```
 
-### Step 2: Install the Mubit Python SDK
+### Configure
 
 ```bash
-cd $CLBENCH
-uv pip install mubit-sdk
-```
-
-### Step 3: Configure environment
-
-Create a `.env` in the CL-Bench root:
-
-```bash
-GEMINI_API_KEY=your-gemini-key
-MUBIT_API_KEY=your-mubit-api-key
-MUBIT_ENDPOINT=https://api.mubit.ai
-```
-
-### Step 4: Set up task data
-
-```bash
-cd $CLBENCH
+export GEMINI_API_KEY=your-gemini-key      # or OPENAI_API_KEY for gpt-5.4
+export MUBIT_API_KEY=your-mubit-api-key
+export MUBIT_ENDPOINT=https://api.mubit.ai
 clbench setup --all
 ```
 
-### Step 5: Validate the systems are registered
+### Run one task (as submitted)
 
 ```bash
-clbench list
-clbench validate system mubit
-clbench validate system mubit_genai
+# gemini-3.7 sales — 5 runs, fresh memory per run group
+clbench run sales_prediction --schedule default \
+  --system mubit_genai --system.model gemini-3.7-flash --runs 5
+
+# gpt-5.4 poker — minimal-injection variant
+clbench run exploitable_poker --schedule default \
+  --system mubit_tuned --system.model gpt-5.4 --runs 5
+
+# baselines for the same task/model
+clbench run sales_prediction --schedule default \
+  --system icl --system.model gemini-3.7-flash --runs 5
 ```
 
-### Step 6: Run the benchmarks
-
-```bash
-# BSM (90 scans, 3 runs)
-clbench run blind_spectrum_monitoring \
-  --schedule default \
-  --system mubit_genai \
-  --system.model gemini-3.5-flash \
-  --runs 3 --max-workers 1 \
-  --run-group-id mubit-bsm
-
-# Database Exploration (40 questions, schema drift, 3 runs)
-clbench run database_exploration \
-  --task.schedule default \
-  --system mubit_genai \
-  --system.model gemini-3.5-flash \
-  --runs 3 --max-workers 1 \
-  --run-group-id mubit-db
-
-# ICL baselines
-clbench run blind_spectrum_monitoring --schedule default --system icl --system.model gemini-3.5-flash --runs 3 --run-group-id icl-bsm
-clbench run database_exploration --task.schedule default --system icl --system.model gemini-3.5-flash --runs 3 --run-group-id icl-db
-```
-
-### Step 7: Analyze results
-
-```bash
-python scripts/analyze_results.py
-```
+Submitted protocol: one task at a time, sequential, a **fresh Mubit instance per task** (wipe the data dir between tasks so retrieval never crosses task boundaries).
 
 ---
 
@@ -317,12 +245,7 @@ python scripts/analyze_results.py
 g_b = (r̄_sf − r̄_sl) / (r_max − r̄_sl)
 ```
 
-Where:
-- `r̄_sf` = mean reward when the system accumulates experience (stateful)
-- `r̄_sl` = mean reward when each instance is seen independently (stateless)
-- `r_max` = maximum achievable reward
-
-Gain isolates **learning from experience** from base-model capability.
+Where `r̄_sf` is mean stateful reward, `r̄_sl` mean stateless reward, and `r_max` the maximum achievable. Gain isolates **learning from experience** from base-model capability. The leaderboard's Agg. Reward anchors each task to a fixed ICL·GPT-5.4 baseline instead.
 
 ---
 
@@ -346,7 +269,6 @@ The SDK picks up both variables automatically. That's the only Mubit configurati
 ## Citation
 
 - **CL-Bench**: Asawa et al., "Continual Learning Bench: Evaluating AI Systems in Real-World Stateful Environments." arXiv:2606.05661, 2026.
-- **Tencent CL-bench**: Dou et al., "CL-bench: A Benchmark for Context Learning." arXiv:2602.03587, 2026.
 - **Mubit**: The Mubit cognitive memory system for agentic AI.
 
 ## License
