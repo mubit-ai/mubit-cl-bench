@@ -1,0 +1,155 @@
+{
+ "note": "mubit_bsm smoke3, 30 scans, 1 run; ground_truth_channels=13",
+ "scans": [
+  {
+   "registry_size": 4,
+   "registry_written": 4,
+   "scan_peaks": 4
+  },
+  {
+   "registry_size": 6,
+   "registry_written": 2,
+   "scan_peaks": 2
+  },
+  {
+   "registry_size": 8,
+   "registry_written": 2,
+   "scan_peaks": 2
+  },
+  {
+   "registry_size": 10,
+   "registry_written": 4,
+   "scan_peaks": 4
+  },
+  {
+   "registry_size": 11,
+   "registry_written": 5,
+   "scan_peaks": 5
+  },
+  {
+   "registry_size": 11,
+   "registry_written": 4,
+   "scan_peaks": 4
+  },
+  {
+   "registry_size": 13,
+   "registry_written": 5,
+   "scan_peaks": 6
+  },
+  {
+   "registry_size": 13,
+   "registry_written": 1,
+   "scan_peaks": 1
+  },
+  {
+   "registry_size": 13,
+   "registry_written": 2,
+   "scan_peaks": 2
+  },
+  {
+   "registry_size": 15,
+   "registry_written": 5,
+   "scan_peaks": 5
+  },
+  {
+   "registry_size": 16,
+   "registry_written": 3,
+   "scan_peaks": 3
+  },
+  {
+   "registry_size": 16,
+   "registry_written": 2,
+   "scan_peaks": 2
+  },
+  {
+   "registry_size": 16,
+   "registry_written": 4,
+   "scan_peaks": 4
+  },
+  {
+   "registry_size": 16,
+   "registry_written": 3,
+   "scan_peaks": 3
+  },
+  {
+   "registry_size": 16,
+   "registry_written": 3,
+   "scan_peaks": 3
+  },
+  {
+   "registry_size": 16,
+   "registry_written": 2,
+   "scan_peaks": 2
+  },
+  {
+   "registry_size": 16,
+   "registry_written": 3,
+   "scan_peaks": 3
+  },
+  {
+   "registry_size": 16,
+   "registry_written": 2,
+   "scan_peaks": 2
+  },
+  {
+   "registry_size": 17,
+   "registry_written": 4,
+   "scan_peaks": 4
+  },
+  {
+   "registry_size": 17,
+   "registry_written": 4,
+   "scan_peaks": 4
+  },
+  {
+   "registry_size": 17,
+   "registry_written": 4,
+   "scan_peaks": 5
+  },
+  {
+   "registry_size": 17,
+   "registry_written": 6,
+   "scan_peaks": 6
+  },
+  {
+   "registry_size": 17,
+   "registry_written": 3,
+   "scan_peaks": 3
+  },
+  {
+   "registry_size": 17,
+   "registry_written": 4,
+   "scan_peaks": 5
+  },
+  {
+   "registry_size": 17,
+   "registry_written": 2,
+   "scan_peaks": 2
+  },
+  {
+   "registry_size": 17,
+   "registry_written": 4,
+   "scan_peaks": 4
+  },
+  {
+   "registry_size": 17,
+   "registry_written": 4,
+   "scan_peaks": 4
+  },
+  {
+   "registry_size": 17,
+   "registry_written": 5,
+   "scan_peaks": 5
+  },
+  {
+   "registry_size": 17,
+   "registry_written": 3,
+   "scan_peaks": 3
+  },
+  {
+   "registry_size": 17,
+   "registry_written": 4,
+   "scan_peaks": 4
+  }
+ ]
+}
