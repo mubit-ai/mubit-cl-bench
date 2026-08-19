@@ -26,7 +26,7 @@ _TABLE_INFO = re.compile(r"pragma\s+table_info\s*\(\s*['\"]?(\w+)", re.I)
 _TABLE_LIST = re.compile(r"sqlite_master|\.tables|\.schema", re.I)
 _RESULT_HEADER = re.compile(r"^Query result \([^)]*\):\s*", re.I)
 
-MAX_FACT_CHARS = 600
+MAX_FACT_CHARS = 2000
 
 Fact = tuple[str, str]
 
@@ -73,6 +73,10 @@ def schema_fact(sql: str, observation: str) -> Optional[Fact]:
         table = m.group(1).lower()
         return f"db:schema:table:{table}", f"SCHEMA table `{table}`:\n{body[:MAX_FACT_CHARS]}"
     if _TABLE_LIST.search(sql):
+        # A name-filtered listing is a partial list; upserting it onto the one
+        # shared key silently replaces the complete list harvested earlier.
+        if re.search(r"name\s*(=|like\b|in\b)", sql, re.I):
+            return None
         return "db:schema:tables", f"SCHEMA tables in this database:\n{body[:MAX_FACT_CHARS]}"
     return None
 
@@ -109,6 +113,18 @@ if __name__ == "__main__":
     assert k == "db:schema:table:taxn_g3" and "no longer exists" in t, (k, t)
     assert drift_fact("ERROR: no such column: price")[0] == "db:drift:column:price"
     assert drift_fact(tables) is None
+
+    # A name-filtered listing is partial, so it must not land on the shared key.
+    assert schema_fact(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'items%'", tables
+    ) is None
+    assert schema_fact("SELECT name FROM sqlite_master WHERE name = 'fdbk_g1'", tables) is None
+
+    # Widest PRAGMA body in the artifacts is 778 chars, and the columns that used
+    # to fall off the old 600-char cap are the ones the questions ask about.
+    wide = pragma + "".join(f"{i} | col_{i} | TEXT | 0 | NULL | 0 \n" for i in range(30))
+    assert len(strip_result_header(wide)) > 600
+    assert "col_29" in schema_fact("PRAGMA table_info(items_g1);", wide)[1]
 
     # Ordinary answer-seeking SQL stays out of the registry.
     assert schema_fact("SELECT COUNT(*) FROM fdbk_g1;", tables) is None

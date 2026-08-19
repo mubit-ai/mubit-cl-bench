@@ -529,8 +529,9 @@ class MubitMemorySystem(ContinualLearningSystem):
         lines = []
         for i, m in enumerate(lessons, 1):
             # Truncate each lesson to keep the block concise and scannable.
-            # Schema facts carry column lists, so they get more room.
-            text = m["text"][:600 if m["text"].startswith("SCHEMA") else 300]
+            # Schema facts are already capped at harvest (MAX_FACT_CHARS); a
+            # second cap here would just move the truncation, not remove it.
+            text = m["text"] if m["text"].startswith("SCHEMA") else m["text"][:300]
             lines.append(f"  {i}. {text}")
         if any(m["text"].startswith("SCHEMA") for m in lessons):
             # Without this the model re-runs PRAGMA out of habit, which is the
