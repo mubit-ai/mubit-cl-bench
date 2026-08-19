@@ -172,39 +172,25 @@ class MubitGenAISystem(MubitMemorySystem):
         # The system instruction goes in a separate config field.
         config["system_instruction"] = system_content
 
-        # Retry on transient API errors (503 UNAVAILABLE, 429, timeouts, etc.).
-        # The genai SDK can hang indefinitely on stalled HTTP connections, so
-        # we wrap each call in a thread-based timeout.
+        # Enforce the timeout in the HTTP client. A thread-based timeout does
+        # not work here: `with ThreadPoolExecutor(...)` calls shutdown(wait=True)
+        # on exit, so a future.result(timeout=...) that fires still blocks until
+        # the stuck request returns. Measured on a db_exploration run: one call
+        # stalled 1565s past its 120s "timeout" before the peer reset it.
         import time as _time
-        from concurrent.futures import ThreadPoolExecutor
-        from concurrent.futures._base import TimeoutError as FuturesTimeout
 
         max_retries = 6
         call_timeout = 120  # seconds per API call
+        config["http_options"] = {"timeout": call_timeout * 1000}  # ms
 
         for attempt in range(max_retries):
             try:
-                # Run in a thread so we can enforce a hard timeout — the genai
-                # SDK's HTTP client has no per-request timeout parameter.
-                with ThreadPoolExecutor(max_workers=1) as ex:
-                    future = ex.submit(
-                        self._genai_client.models.generate_content,
-                        model=self.model,
-                        contents=contents,
-                        config=config,
-                    )
-                    response = future.result(timeout=call_timeout)
-                break
-            except FuturesTimeout:
-                logger.warning(
-                    "genai call timed out after %ds (attempt %d/%d)",
-                    call_timeout, attempt + 1, max_retries,
+                response = self._genai_client.models.generate_content(
+                    model=self.model,
+                    contents=contents,
+                    config=config,
                 )
-                if attempt == max_retries - 1:
-                    raise RuntimeError(
-                        f"genai call timed out after {call_timeout}s x {max_retries} attempts"
-                    )
-                _time.sleep(2 ** attempt)
+                break
             except Exception as exc:
                 msg = str(exc)
                 is_transient = any(
