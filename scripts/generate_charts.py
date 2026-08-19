@@ -331,22 +331,23 @@ def chart_4_per_run_consistency():
 
 
 def chart_5_drift_adaptation():
-    """Mubit vs Mem0 drift adaptation — the key differentiator."""
+    """Mubit vs ICL gain either side of the schema migration."""
     d = DATA["chart_5_database_drift_adaptation"]
 
     fig, ax = plt.subplots(figsize=(10, 5.5))
 
-    # Data: pre/post migration gains for Mubit vs Mem0
+    # Both series come from artifacts in results/database_exploration (mubit-db-3,
+    # icl-db-3). Mem0 used to be plotted here from invented constants — no Mem0 run exists.
     categories = ["Pre-Migration\n(Q1–Q20)", "Post-Migration\n(Q21–Q40)", "Drift Delta\n(change)"]
     mubit_vals = [
         d["pre_migration_gain_mubit"] * 100,
         d["post_migration_gain_mubit"] * 100,
         (d["post_migration_gain_mubit"] - d["pre_migration_gain_mubit"]) * 100,
     ]
-    mem0_vals = [
-        d.get("pre_migration_gain_mem0", 0.25) * 100,
-        d.get("post_migration_gain_mem0", 0.15) * 100,
-        (d.get("post_migration_gain_mem0", 0.15) - d.get("pre_migration_gain_mem0", 0.25)) * 100,
+    icl_vals = [
+        d["pre_migration_gain_icl"] * 100,
+        d["post_migration_gain_icl"] * 100,
+        (d["post_migration_gain_icl"] - d["pre_migration_gain_icl"]) * 100,
     ]
 
     x = np.arange(len(categories))
@@ -354,8 +355,8 @@ def chart_5_drift_adaptation():
 
     bars_m = ax.bar(x - width/2, mubit_vals, width, color=COLORS["mubit"],
                     label="Mubit", edgecolor="white", linewidth=0.5)
-    bars_e = ax.bar(x + width/2, mem0_vals, width, color=COLORS["mem0"],
-                    label="Mem0", edgecolor="white", linewidth=0.5)
+    bars_e = ax.bar(x + width/2, icl_vals, width, color=COLORS["icl"],
+                    label="ICL", edgecolor="white", linewidth=0.5)
 
     # Value labels
     for bar, val in zip(bars_m, mubit_vals):
@@ -364,36 +365,22 @@ def chart_5_drift_adaptation():
         ax.text(bar.get_x() + bar.get_width()/2, val + offset,
                 f"{val:+.1f}%", ha="center", va=va, fontsize=10, fontweight="bold",
                 color=COLORS["mubit"])
-    for bar, val in zip(bars_e, mem0_vals):
+    for bar, val in zip(bars_e, icl_vals):
         va = "bottom" if val >= 0 else "top"
         offset = 0.5 if val >= 0 else -0.5
         ax.text(bar.get_x() + bar.get_width()/2, val + offset,
                 f"{val:+.1f}%", ha="center", va=va, fontsize=10, fontweight="bold",
-                color=COLORS["mem0"])
+                color=COLORS["icl"])
 
     ax.axhline(y=0, color="#475569", linewidth=0.8)
     ax.set_xticks(x)
     ax.set_xticklabels(categories, fontsize=11)
-    ax.set_ylabel("Mean Normalized Gain (%)")
-    ax.set_title("Concept Drift: Mubit Adapts, Mem0 Breaks", pad=12, fontsize=14, fontweight="bold")
+    ax.set_ylabel(d["y_axis"])
+    ax.set_title(d["title"], pad=12, fontsize=14, fontweight="bold")
     ax.legend(frameon=False, fontsize=11, loc="upper right")
     ax.yaxis.set_major_formatter(mticker.PercentFormatter(decimals=0))
     ax.grid(axis="y", color=COLORS["grid"], linewidth=0.5)
     ax.set_axisbelow(True)
-
-    # Annotation on the drift delta
-    ax.annotate("Mubit semantic lessons\nsurvive schema renames",
-                xy=(2 - width/2, mubit_vals[2]),
-                xytext=(2, mubit_vals[2] + 6),
-                fontsize=9, fontweight="bold", color=COLORS["mubit"],
-                ha="center",
-                arrowprops=dict(arrowstyle="->", color=COLORS["mubit"], lw=1.5))
-    ax.annotate("Mem0 stale facts\ncause regression",
-                xy=(2 + width/2, mem0_vals[2]),
-                xytext=(2, mem0_vals[2] - 6),
-                fontsize=9, fontweight="bold", color=COLORS["mem0"],
-                ha="center", va="top",
-                arrowprops=dict(arrowstyle="->", color=COLORS["mem0"], lw=1.5))
 
     fig.savefig(OUTPUT_DIR / "chart5_drift_adaptation.png", facecolor="white")
     plt.close()

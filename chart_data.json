@@ -11,11 +11,11 @@
   "significance": "Gain flagged n.s. when |gain| < 2 x std of the 5 stateful run means."
  },
  "chart_1_normalized_gain_comparison": {
-  "title": "Raw Gain on CL-Bench (all 6 tasks): Mubit vs Competing Memory Systems",
-  "subtitle": "Higher is better. Raw gain = stateful mean - stateless baseline (5 runs each). n.s. = not significant at 2-sigma vs run variance.",
+  "title": "Gain on CL-Bench (all 6 tasks): Mubit vs Competing Memory Systems",
+  "subtitle": "Higher is better. Raw gain = stateful mean - stateless baseline. Rows marked (g_b) carry normalized gain instead: (r_sf - r_sl) / (r_max - r_sl). n.s. = not significant at 2-sigma vs run variance.",
   "type": "grouped_bar",
   "x_axis": "Task",
-  "y_axis": "Raw Gain (r_sf - r_sl)",
+  "y_axis": "Gain over stateless (raw; g_b where marked)",
   "data": [
    {
     "task": "Sales Prediction",
@@ -38,7 +38,7 @@
     "note": "All 5 Mubit runs positive; run 5 = +0.051 bits, the only absolutely-positive stateful score ever recorded here. No system's gain clears 2-sigma; every paper stateful arm is negative bits."
    },
    {
-    "task": "Blind Spectrum Monitoring",
+    "task": "Blind Spectrum Monitoring (g_b)",
     "mubit_model": "gemini-3.5-flash (registry)",
     "Mubit": 0.318,
     "ICL": 0.294,
@@ -48,17 +48,17 @@
     "note": "Normalized g_b after structured-registry optimization (11.6% -> 31.8%). Best-run IoU 71.1%. The earlier +53.7% figure was a baseline artifact (see FINDINGS.md 7.1)."
    },
    {
-    "task": "Database Exploration",
-    "mubit_model": "gemini-3.5-flash",
+    "task": "Database Exploration (g_b)",
+    "mubit_model": "gemini-2.5-flash",
     "Mubit": 0.137,
     "ICL": 0.201,
     "Mem0": 0.202,
     "ACE": 0.086,
     "Claude-Code": null,
-    "note": "Headline is drift adaptation, not raw gain: Mubit +32% post-migration drift gain; Mem0's brittle facts break (negative). See chart_5/chart_7."
+    "note": "Mubit g_b 13.7% from mubit-db-3 (gemini/gemini-2.5-flash). Headline is drift adaptation, not gain level: pre-migration +0.1122 -> post +0.1478, a +32% relative rise. See chart_5."
    },
    {
-    "task": "Exploitable Poker",
+    "task": "Exploitable Poker (g_b)",
     "mubit_model": "gemini-3.5-flash (V11)",
     "Mubit": 0.108,
     "ICL": null,
@@ -75,7 +75,7 @@
     "Mem0": 0.157,
     "ACE": 0.083,
     "Claude-Code": 0.038,
-    "note": "+0.055, 4/5 runs positive, stateful mean 0.628 \u2014 the highest absolute codebase score of any system (paper best: ACE 0.609, mem0 0.584), achieved on the highest baseline. Steps/issue 14.7\u219212.5. Adapter iteration arc: \u22120.035 \u2192 \u22120.018 \u2192 +0.055."
+    "note": "+0.055, 4/5 runs positive, stateful mean 0.628 — the highest absolute codebase score of any system (paper best: ACE 0.609, mem0 0.584), achieved on the highest baseline. Steps/issue 14.7→12.5. Adapter iteration arc: −0.035 → −0.018 → +0.055."
    }
   ]
  },
@@ -374,11 +374,11 @@
   "stage_boundaries": [
    {
     "x": 30,
-    "label": "Stage 1\u21922: Narrowband channels appear"
+    "label": "Stage 1→2: Narrowband channels appear"
    },
    {
     "x": 60,
-    "label": "Stage 2\u21923: Full grid active"
+    "label": "Stage 2→3: Full grid active"
    }
   ]
  },
@@ -434,8 +434,8 @@
   }
  },
  "chart_5_database_drift_adaptation": {
-  "title": "Database Exploration: Schema Drift Adaptation",
-  "subtitle": "Mubit adapts (+32% gain increase). Mem0 degrades from stale extracted facts.",
+  "title": "Database Exploration: Gain Before and After the Schema Migration",
+  "subtitle": "Mean gain per question before and after the Q20 migration. Mubit +0.1122 -> +0.1478; ICL +0.0844 -> +0.1355 (3 runs each, results/database_exploration).",
   "type": "line_chart",
   "x_axis": "Question Number",
   "y_axis": "Mean Gain per Question",
@@ -488,9 +488,7 @@
   "pre_migration_gain_icl": 0.0844,
   "post_migration_gain_icl": 0.1355,
   "drift_line_x": 20,
-  "drift_label": "Schema Migration",
-  "pre_migration_gain_mem0": 0.25,
-  "post_migration_gain_mem0": 0.15
+  "drift_label": "Schema Migration"
  },
  "chart_6_memory_systems_comparison": {
   "title": "Memory System Comparison on CL-Bench",
@@ -519,7 +517,7 @@
     "bsm_iou": "37%",
     "db_efficiency": "17%",
     "cost": "Low",
-    "architecture": "LLM-extracted facts \u2192 vector search"
+    "architecture": "LLM-extracted facts → vector search"
    },
    {
     "system": "ACE",
@@ -532,8 +530,8 @@
    {
     "system": "ICL Notepad",
     "beats_icl": false,
-    "bsm_iou": "\u2014",
-    "db_efficiency": "\u2014",
+    "bsm_iou": "—",
+    "db_efficiency": "—",
     "cost": "Medium",
     "architecture": "Model-curated scratchpad"
    }
@@ -558,8 +556,7 @@
    "stateless_efficiency": 5,
    "improvement_over_stateless": "260%",
    "drift_adaptation": "+32% gain increase post-migration",
-   "mem0_drift": "DEGRADES (stale facts cause negative drift)",
-   "key_advantage": "Mubit's semantic lessons survive schema renames; Mem0's extracted facts break"
+   "key_advantage": "One keyed fact per database object; a rename overwrites that object's entry rather than leaving a stale column list recallable"
   },
   "poker": {
    "mubit_gain": 10.8,
@@ -571,30 +568,6 @@
    "approach": "Session-stateful continuity + Mubit opponent observations",
    "verdict": "Session calibration + opponent intelligence = +10.8% gain"
   }
- },
- "chart_7_mubit_vs_mem0_drift": {
-  "title": "Concept Drift: Mubit vs Mem0 on Database Exploration",
-  "subtitle": "When the schema changes at Q20, Mem0's brittle facts break. Mubit's semantic lessons survive.",
-  "type": "grouped_bar",
-  "x_axis": "Phase",
-  "y_axis": "Mean Normalized Gain",
-  "data": [
-   {
-    "phase": "Pre-Migration\n(Q1-Q20)",
-    "Mubit": 11.2,
-    "Mem0": 25.0
-   },
-   {
-    "phase": "Post-Migration\n(Q21-Q40)",
-    "Mubit": 14.8,
-    "Mem0": 15.0
-   },
-   {
-    "phase": "Drift Delta\n(change)",
-    "Mubit": 3.6,
-    "Mem0": -10.0
-   }
-  ]
  },
  "chart_8_sales_model_scaling": {
   "title": "Sales Prediction: Mubit Across Three Model Tiers",
