@@ -148,7 +148,7 @@ class MubitFullSystem(MubitMemorySystem):
             outcome_label = "tied"
         mubit_outcome = _OUTCOME_MAP.get(outcome_label, "neutral")
         # Positive signal for wins, negative for losses, neutral otherwise.
-        signal = {"won": 0.8, "lost": 0.2, "tied": 0.5}.get(outcome_label, 0.5)
+        signal = {"won": 1.0, "lost": -1.0}.get(outcome_label, 0.0)
         ids = self._pending_retrieved_ids.pop(instance_id, [])
         for eid in ids:
             try:
