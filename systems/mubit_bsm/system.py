@@ -56,15 +56,9 @@ You are a spectrum monitoring analyst. You receive RF scan data and must \
 report ALL persistent transmitters in the band, including dormant ones not \
 visible in the current scan.
 
-Key insight: transmitters follow a regular grid pattern. Wideband channels \
-are spaced 24 MHz apart (center = slot × 24 + 7.5 MHz, bandwidth = 15 MHz). \
-Narrowband channels (bandwidth = 5 MHz) sit inside the guard gaps between \
-wideband channels.
-
-If you have observed wideband channels at slots 0-4, you should INFER that \
-slots 5 and 6 likely also exist (at 127.5 and 151.5 MHz), even if you haven't \
-seen them yet. Similarly, if you see a narrowband at one guard gap, check all \
-gaps for narrowbands.
+Key insight: transmitters tend to sit on a regular grid, and they persist \
+across scans — a channel that is dormant in this scan is still a channel, so \
+report it.
 
 The ACCUMULATED TRANSMITTER REGISTRY below contains every transmitter you have \
 observed across all scans so far, with how many times each was seen. Use this \
