@@ -90,7 +90,10 @@ class MubitGenAISystem(MubitMemorySystem):
         """Override to use google-genai SDK with response_schema."""
         self.interaction_count += 1
 
-        retrieved = self._retrieve_lessons(query)
+        # Retrieve once per instance, not once per turn: mid-instance the
+        # conversation already carries what was retrieved at the boundary.
+        retrieved = self._retrieve_lessons(query) if self._at_instance_boundary else []
+        self._at_instance_boundary = False
         query_content = self._inject_memory(query.prompt, retrieved)
 
         self._add_message("user", query_content)
@@ -103,15 +106,8 @@ class MubitGenAISystem(MubitMemorySystem):
             sys_parts.append(self.user_system_prompt)
         system_content = "\n\n".join(sys_parts)
 
-        # Convert messages to genai Content format.
-        # genai uses "user"/"model" roles; we map assistant->model.
-        contents = []
-        for msg in self.messages:
-            role = "model" if msg["role"] == "assistant" else "user"
-            contents.append({"role": role, "parts": [{"text": msg["content"]}]})
-
         parsed, usage_event = self._genai_completion(
-            system_content, contents, query.response_schema
+            system_content, self._to_genai_contents(self.messages), query.response_schema
         )
 
         if usage_event is not None:
@@ -143,6 +139,17 @@ class MubitGenAISystem(MubitMemorySystem):
         self._last_query = query
         self._last_response = response
         return response
+
+    @staticmethod
+    def _to_genai_contents(messages: list[dict[str, str]]) -> list[dict]:
+        """genai uses "user"/"model" roles; we map assistant->model."""
+        return [
+            {
+                "role": "model" if m["role"] == "assistant" else "user",
+                "parts": [{"text": m["content"]}],
+            }
+            for m in messages
+        ]
 
     def _genai_completion(
         self,
