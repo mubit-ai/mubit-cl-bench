@@ -38,6 +38,7 @@ from ..utils import (
     TokenBudgetTracker,
     completion_with_structured_output,
 )
+from .schema import drift_fact, schema_fact
 
 logger = logging.getLogger(__name__)
 
@@ -217,10 +218,6 @@ def _distill_generic_lesson(prompt: str, action_str: str, feedback: str) -> str:
     feedback_short = feedback[:200] if feedback else ""
     return f"Prior instance feedback: {feedback_short}. My action: {action_short}"
 
-    # Build a concise strategic summary
-    parts = [f"Opponent {opponent}:"]
-    return ". ".join(parts)
-
 
 def _build_retrieval_key(prompt: str, last_turn_feedback: Optional[str]) -> str:
     """Build the query used to retrieve relevant lessons.
@@ -242,6 +239,13 @@ def _build_retrieval_key(prompt: str, last_turn_feedback: Optional[str]) -> str:
         if freqs:
             return f"Spectrum scan detected peaks at: {', '.join(freqs[:8])} MHz. Transmitter observations."
         return "Spectrum monitoring transmitter observations dormant channels"
+    if task == "database":
+        # Key on the schema, not the question. Every question is different;
+        # the schema is the only thing that carries over between them.
+        return (
+            "database schema: table names, column names and types, which tables "
+            "belong to which dataset, schema drift corrections"
+        )
     return prompt[:300]
 
 
@@ -303,6 +307,10 @@ class MubitMemorySystem(ContinualLearningSystem):
         # are injected. Set by observe() at instance completion, cleared by
         # respond() after the first turn of the new instance.
         self._at_instance_boundary: bool = True
+        # Schema facts written this run, keyed by object -> text. Re-writes
+        # only go out when the text changed, so a migration refreshes the entry
+        # and a repeat lookup costs nothing.
+        self._schema_facts: dict[str, str] = {}
 
         # Mubit client + run scoping (lazily connected so the class can be
         # introspected/imported without a running instance).
@@ -422,6 +430,11 @@ class MubitMemorySystem(ContinualLearningSystem):
         # Carry the last within-instance feedback forward for in-hand context.
         self._last_turn_feedback = content or None
 
+        # Database exploration: the durable artifact is the schema, and it is
+        # discovered mid-instance, not at instance completion.
+        if self._last_query is not None and _detect_task(self._last_query.prompt) == "database":
+            self._harvest_schema(content)
+
         # Store a lesson only at instance completion, when we have a full
         # (prompt, action, feedback) triple and a definitive outcome.
         if instance_complete and self._last_query and self._last_response:
@@ -449,6 +462,7 @@ class MubitMemorySystem(ContinualLearningSystem):
         self._last_response = None
         self._last_turn_feedback = None
         self._at_instance_boundary = True
+        self._schema_facts = {}
 
     @property
     def name(self) -> str:
@@ -472,12 +486,20 @@ class MubitMemorySystem(ContinualLearningSystem):
         if self._client is None:
             return []
         key = _build_retrieval_key(query.prompt, self._last_turn_feedback)
+        # A schema needs more slots than a handful of prose lessons.
+        limit = 16 if _detect_task(query.prompt) == "database" else self.top_k
         try:
             out = self._client.recall(
                 query=key,
-                limit=self.top_k,
+                limit=limit,
                 entry_types=["lesson"],
                 include_working_memory=False,
+                # Direct bypass: only ``evidence`` is used below, so skip the
+                # agent router and the server-side answer synthesis. Measured
+                # on a 50-entry store: 46s (gateway 504) -> 0.5s, and none of
+                # the synthesis tokens are billed.
+                mode="direct",
+                evidence_only=True,
             )
         except Exception:
             logger.warning("Mubit recall failed; proceeding memoryless", exc_info=True)
@@ -507,8 +529,17 @@ class MubitMemorySystem(ContinualLearningSystem):
         lines = []
         for i, m in enumerate(lessons, 1):
             # Truncate each lesson to keep the block concise and scannable.
-            text = m["text"][:300]
+            # Schema facts carry column lists, so they get more room.
+            text = m["text"][:600 if m["text"].startswith("SCHEMA") else 300]
             lines.append(f"  {i}. {text}")
+        if any(m["text"].startswith("SCHEMA") for m in lessons):
+            # Without this the model re-runs PRAGMA out of habit, which is the
+            # entire cost being optimised here.
+            lines.append(
+                "  You already know the above. Do not spend queries "
+                "rediscovering it — explore only objects not listed here, or "
+                "when a query errors."
+            )
         block = f"{MEMORY_BLOCK_HEADER}\n" + "\n".join(lines) + f"\n{MEMORY_BLOCK_FOOTER}"
         return f"{block}\n\n{prompt}"
 
@@ -516,6 +547,11 @@ class MubitMemorySystem(ContinualLearningSystem):
         self, query: Query, response: Response, feedback: str
     ) -> None:
         if self._client is None or not feedback:
+            return
+        task_type = _detect_task(query.prompt)
+        if task_type == "database":
+            # Schema facts written by _harvest_schema are the durable artifact
+            # here; a prose summary of the previous *question* only crowds recall.
             return
         action = response.action
         action_str = (
@@ -525,7 +561,6 @@ class MubitMemorySystem(ContinualLearningSystem):
         )
         outcome = _parse_outcome(feedback) or "neutral"
         lesson_text = _distill_lesson_text(query.prompt, action_str, feedback)
-        task_type = _detect_task(query.prompt)
         opponent = _extract_opponent(query.prompt) if task_type == "poker" else None
 
         lesson_type = (
@@ -542,7 +577,7 @@ class MubitMemorySystem(ContinualLearningSystem):
             upsert_key = f"lesson:{query.instance_id or uuid.uuid4().hex[:8]}"
 
         metadata: dict[str, Any] = {
-            "task": "exploitable_poker",
+            "task": task_type,
             "opponent": opponent,
             "instance_id": query.instance_id,
             "instance_index": query.instance_index,
@@ -564,6 +599,36 @@ class MubitMemorySystem(ContinualLearningSystem):
             )
         except Exception:
             logger.warning("Mubit remember failed; lesson not stored", exc_info=True)
+
+    def _harvest_schema(self, observation: str) -> None:
+        """Store what this query taught us about the database — or that the
+        schema moved under us."""
+        if self._client is None or not observation:
+            return
+        action = getattr(self._last_response, "action", None)
+        sql = str(getattr(action, "content", "") or "")
+        fact = drift_fact(observation) or schema_fact(sql, observation)
+        if fact is None or self._schema_facts.get(fact[0]) == fact[1]:
+            return
+        upsert_key, text = fact
+        self._schema_facts[upsert_key] = text
+        try:
+            self._client.remember(
+                content=text,
+                intent="lesson",
+                lesson_type="observation",
+                lesson_scope=self.share_scope,
+                lesson_importance="high",
+                upsert_key=upsert_key,
+                metadata={"task": "database_exploration", "fact": upsert_key},
+                source="agent",
+                agent_id="clbench-mubit",
+                # Written mid-instance, read at the next instance boundary —
+                # block so the fact is queryable by then.
+                wait=True,
+            )
+        except Exception:
+            logger.warning("Mubit remember failed for %s", upsert_key, exc_info=True)
 
     # ---- token bookkeeping (mirrors mem0/icl_notepad) ----
 

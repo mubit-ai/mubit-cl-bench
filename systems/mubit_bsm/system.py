@@ -1,47 +1,55 @@
-"""
-Mubit BSM-optimized system: structured transmitter registry.
+"""Mubit BSM system: the transmitter registry, stored in Mubit.
 
-Instead of storing prose lessons in Mubit and retrieving them, this system
-maintains a **structured transmitter registry** — a deduplicated JSON list of
-all transmitter hypotheses accumulated across scans. This directly addresses
-the two failure modes identified in BSM analysis:
+Instead of prose lessons, this system accumulates a **structured transmitter
+registry** — one Mubit entry, upserted on a stable key and refined by each
+scan. That addresses the two BSM failure modes:
 
-1. Under-reporting: dormant channels accumulate in the registry even when not
-   visible in the current scan, so the agent always knows about them.
+1. Under-reporting: dormant channels stay in the registry even when they are
+   not in the current scan, so the agent always knows about them.
 2. Fragmentation: near-duplicate frequency observations merge into one entry,
-   preventing the agent from reporting 18 fragmented transmitters when the
-   ground truth is 13.
+   so 13 real transmitters are not reported as 18.
 
-The registry is injected as structured context that the LLM can directly use
-to form its ScanReport — no lossy prose-to-JSON round-trip.
+The registry is read back with ``lookup()`` at the start of each scan and
+injected as structured context the LLM can turn straight into a ScanReport —
+no lossy prose-to-JSON round trip. Grid inference is derived from what was
+read and is never written back; memory holds observations only.
 
-For non-BSM tasks, this system falls back to the base mubit_genai adapter.
+Non-BSM prompts fall through to ``mubit_genai`` unchanged.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import os
-import re
-import uuid
 from typing import Any, Optional
 
 from pydantic import BaseModel
 
-from ...interface import (
-    ContinualLearningSystem,
-    Observation,
-    Query,
-    Response,
-    observation_marks_instance_complete,
-)
+from ...interface import Observation, Query, Response, observation_marks_instance_complete
 from ...registry import register_system
-from ...usage import UsageEvent
+from ..mubit_genai.system import MubitGenAISystem
+from .registry import (
+    REGISTRY_KEY,
+    REGISTRY_MATCH,
+    dedupe,
+    dumps_registry,
+    extract_peaks,
+    format_registry,
+    infer_grid_channels,
+    is_bsm,
+    is_wideband,
+    loads_registry,
+    merge_peaks,
+)
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "gemini-3.5-flash"
+
+# One registry entry is written per scan (the upsert supersedes rather than
+# replaces), so this covers a 90-scan run with room to spare.
+# ponytail: fixed cap, paginate if a schedule ever runs longer than this.
+LOOKUP_LIMIT = 256
 
 BSM_SYSTEM_PROMPT = """\
 You are a spectrum monitoring analyst. You receive RF scan data and must \
@@ -64,221 +72,12 @@ as your primary evidence. Merge any new peaks from the current scan into this \
 registry, then report all transmitters you believe persist in the band."""
 
 
-def _extract_peaks(prompt: str) -> list[dict]:
-    """Extract detected peaks from a BSM scan prompt."""
-    peaks = []
-    for match in re.finditer(
-        r"freq:\s*([\d.]+)\s*MHz.*?power:\s*([-\d.]+)\s*dBm.*?width:\s*([\d.]+)\s*MHz",
-        prompt,
-    ):
-        peaks.append(
-            {
-                "freq": float(match.group(1)),
-                "power": float(match.group(2)),
-                "width": float(match.group(3)),
-            }
-        )
-    return peaks
-
-
-def _is_bsm(prompt: str) -> bool:
-    return "--- Scan" in prompt and "Detected peaks:" in prompt
-
-
-def _merge_into_registry(
-    registry: list[dict],
-    peaks: list[dict],
-    scan_num: int,
-    merge_threshold: float = 8.0,
-) -> list[dict]:
-    """Merge detected peaks into the transmitter registry.
-
-    Peaks within `merge_threshold` MHz of an existing entry are merged
-    (averaging the center frequency, incrementing hit_count). New peaks
-    create new entries.
-
-    Wideband peaks (width >= 10) and narrowband peaks (width < 10) are
-    kept in separate frequency bins to avoid merging a wideband with a
-    nearby narrowband.
-    """
-    for peak in peaks:
-        freq = peak["freq"]
-        width = peak["width"]
-        power = peak["power"]
-        is_wideband = width >= 10.0
-
-        # Find a match in the registry
-        best_idx = -1
-        best_dist = float("inf")
-        for i, entry in enumerate(registry):
-            # Don't merge wideband with narrowband
-            entry_is_wide = entry["bandwidth"] >= 10.0
-            if entry_is_wide != is_wideband:
-                continue
-            dist = abs(entry["center_freq"] - freq)
-            if dist < best_dist:
-                best_dist = dist
-                best_idx = i
-
-        if best_idx >= 0 and best_dist < merge_threshold:
-            # Merge: update running average and increment count
-            entry = registry[best_idx]
-            old_count = entry["hit_count"]
-            new_count = old_count + 1
-            entry["center_freq"] = round(
-                (entry["center_freq"] * old_count + freq) / new_count, 2
-            )
-            entry["bandwidth"] = round(
-                (entry["bandwidth"] * old_count + width) / new_count, 1
-            )
-            entry["hit_count"] = new_count
-            entry["last_seen_scan"] = scan_num
-        else:
-            # New transmitter hypothesis
-            registry.append(
-                {
-                    "center_freq": round(freq, 2),
-                    "bandwidth": round(width, 1),
-                    "hit_count": 1,
-                    "first_seen_scan": scan_num,
-                    "last_seen_scan": scan_num,
-                    "is_wideband": is_wideband,
-                }
-            )
-
-    # Sort by center frequency
-    registry.sort(key=lambda e: e["center_freq"])
-    return registry
-
-
-def _format_registry(registry: list[dict]) -> str:
-    """Format the transmitter registry as a clean structured block."""
-    if not registry:
-        return "(no transmitters accumulated yet)"
-
-    lines = []
-    for entry in registry:
-        cf = entry["center_freq"]
-        bw = entry["bandwidth"]
-        hits = entry["hit_count"]
-        wb = "W" if entry.get("is_wideband", bw >= 10) else "N"
-        confirmed = "confirmed" if hits >= 2 else "tentative"
-        lines.append(
-            f"  {cf:>7.1f} MHz | bw={bw:>5.1f} | hits={hits:>2} | {wb} | {confirmed}"
-        )
-    return "\n".join(lines)
-
-
-def _infer_grid_channels(registry: list[dict]) -> list[dict]:
-    """Infer missing wideband channels by grid regularity.
-
-    If we have wideband entries at known slots, infer missing slots at
-    slot*24+7.5 MHz. Only infer if at least 3 wideband channels are confirmed
-    (hit_count >= 2) and the grid spacing is detectable.
-    """
-    widebands = [e for e in registry if e.get("is_wideband", e["bandwidth"] >= 10)]
-    confirmed_wide = [e for e in widebands if e["hit_count"] >= 2]
-
-    if len(confirmed_wide) < 3:
-        return registry
-
-    # Detect grid spacing: find the most common gap between consecutive widebands
-    confirmed_wide.sort(key=lambda e: e["center_freq"])
-    gaps = []
-    for i in range(1, len(confirmed_wide)):
-        gap = confirmed_wide[i]["center_freq"] - confirmed_wide[i - 1]["center_freq"]
-        gaps.append(round(gap))
-
-    if not gaps:
-        return registry
-
-    # Most common gap (should be ~24)
-    from collections import Counter
-
-    grid = Counter(gaps).most_common(1)[0][0]
-    if grid < 18 or grid > 30:
-        return registry  # Not a recognizable grid
-
-    # Find the base offset (should be ~7.5)
-    first_freq = confirmed_wide[0]["center_freq"]
-    # Round to nearest grid slot
-    base_slot = round((first_freq - 7.5) / grid)
-    base_freq = base_slot * grid + 7.5
-
-    # Infer all slots from min to max+2
-    min_slot = base_slot
-    max_slot = base_slot
-    existing_slots = set()
-    for e in confirmed_wide:
-        slot = round((e["center_freq"] - base_freq) / grid) + base_slot
-        existing_slots.add(slot)
-        max_slot = max(max_slot, slot)
-        min_slot = min(min_slot, slot)
-
-    # Add inferred entries for missing slots
-    for slot in range(min_slot, max_slot + 3):
-        if slot not in existing_slots:
-            inferred_freq = slot * grid + 7.5
-            # Don't infer outside the band (0-168 MHz)
-            if 0 <= inferred_freq <= 168:
-                # Check we don't already have a close entry
-                too_close = any(
-                    abs(e["center_freq"] - inferred_freq) < 8
-                    for e in registry
-                )
-                if not too_close:
-                    registry.append(
-                        {
-                            "center_freq": inferred_freq,
-                            "bandwidth": 15.0,
-                            "hit_count": 0,
-                            "first_seen_scan": None,
-                            "last_seen_scan": None,
-                            "is_wideband": True,
-                            "inferred": True,
-                        }
-                    )
-
-    # Also infer narrowband channels in guard gaps between confirmed widebands
-    # Narrowbands sit at wideband_center + 12 (midpoint of guard gap)
-    for slot in sorted(existing_slots):
-        nb_freq = slot * grid + 7.5 + 12.0  # 7.5 + 12 = 19.5 for slot 0
-        if 0 <= nb_freq <= 168:
-            too_close = any(
-                abs(e["center_freq"] - nb_freq) < 4
-                for e in registry
-                if not e.get("is_wideband", e["bandwidth"] >= 10)
-            )
-            if not too_close:
-                # Check if we have any narrowband observations near this gap
-                gap_obs = [
-                    e
-                    for e in registry
-                    if not e.get("is_wideband", e["bandwidth"] >= 10)
-                    and abs(e["center_freq"] - nb_freq) < 8
-                ]
-                if gap_obs:
-                    # Already have observations here, skip inference
-                    continue
-
-    registry.sort(key=lambda e: e["center_freq"])
-    return registry
-
-
 @register_system("mubit_bsm")
-class MubitBSMSystem(ContinualLearningSystem):
-    """BSM-optimized system with structured transmitter registry.
-
-    For BSM: maintains a running transmitter registry, merges peaks across
-    scans, infers grid channels, and injects the full registry as structured
-    context.
-
-    For non-BSM tasks: delegates to the mubit_genai adapter (Mubit memory +
-    native Google genai structured outputs).
-    """
+class MubitBSMSystem(MubitGenAISystem):
+    """Mubit-backed transmitter registry, with mubit_genai for other tasks."""
 
     supports_baseline = True
-    parallel_safe = False  # Same as mubit_genai (google-genai fork issue)
+    parallel_safe = False  # inherited constraint: google-genai + fork
 
     def __init__(
         self,
@@ -286,147 +85,145 @@ class MubitBSMSystem(ContinualLearningSystem):
         top_k: int = 6,
         system_prompt: str = "",
         max_tokens: Optional[int] = None,
+        share_scope: str = "run",
         temperature: float = 0.0,
     ):
-        self.model = model
-        self.top_k = top_k
-        self.user_system_prompt = system_prompt
-        self.max_tokens = max_tokens
-        self.temperature = temperature
-
-        # BSM transmitter registry
-        self._registry: list[dict] = []
+        super().__init__(
+            model=model,
+            top_k=top_k,
+            system_prompt=system_prompt,
+            max_tokens=max_tokens,
+            share_scope=share_scope,
+            temperature=temperature,
+        )
         self._scan_count: int = 0
-
-        # For non-BSM tasks: delegate to mubit_genai
-        self._fallback: Optional[MubitGenAISystem] = None
-
-        # Conversation context (within current instance)
-        self.messages: list[dict[str, str]] = []
-        self.interaction_count: int = 0
-        self._last_query: Optional[Query] = None
-        self._last_response: Optional[Response] = None
-        self._at_instance_boundary: bool = True
-
-        # genai client (for structured outputs)
-        self._genai_client = None
-        self._init_genai()
-
-    def _init_genai(self) -> None:
-        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        if not api_key:
-            logger.warning("GEMINI_API_KEY not set")
-            return
-        try:
-            from google import genai  # type: ignore
-
-            self._genai_client = genai.Client(api_key=api_key)
-        except Exception:
-            logger.error("Failed to init google-genai client", exc_info=True)
-
-    def _get_fallback(self) -> "MubitGenAISystem":
-        if self._fallback is None:
-            from ..mubit_genai.system import MubitGenAISystem
-
-            self._fallback = MubitGenAISystem(
-                model=self.model,
-                top_k=self.top_k,
-                system_prompt=self.user_system_prompt,
-                max_tokens=self.max_tokens,
+        if self._client is None:
+            logger.warning(
+                "No Mubit client: the transmitter registry has nowhere to live, "
+                "so BSM will run stateless."
             )
-        return self._fallback
-
-    # ---- ContinualLearningSystem interface ----
-
-    def respond(self, query: Query) -> Response:
-        prompt = query.prompt
-        if _is_bsm(prompt):
-            return self._respond_bsm(query)
-        else:
-            return self._get_fallback().respond(query)
-
-    def observe(
-        self, observation: Observation, next_query: Optional[Query] = None
-    ) -> None:
-        if self._last_query and _is_bsm(self._last_query.prompt):
-            self._observe_bsm(observation)
-        else:
-            self._get_fallback().observe(observation, next_query)
-
-    def reset(self) -> None:
-        self._registry = []
-        self._scan_count = 0
-        self.messages = []
-        self.interaction_count = 0
-        self._last_query = None
-        self._last_response = None
-        self._at_instance_boundary = True
-        if self._fallback:
-            self._fallback.reset()
 
     @property
     def name(self) -> str:
         return "mubit_bsm"
 
     def get_run_artifacts(self) -> Optional[dict[str, Any]]:
-        return {
-            "artifact_type": "mubit_bsm",
-            "model": self.model,
-            "registry_size": len(self._registry),
-            "scan_count": self._scan_count,
-        }
+        base = super().get_run_artifacts() or {}
+        base.update({"artifact_type": "mubit_bsm", "scan_count": self._scan_count})
+        return base
 
-    # ---- BSM-specific logic ----
+    # ---- routing ----
+
+    def respond(self, query: Query) -> Response:
+        if is_bsm(query.prompt):
+            return self._respond_bsm(query)
+        return super().respond(query)
+
+    def observe(self, observation: Observation, next_query: Optional[Query] = None) -> None:
+        if self._last_query is not None and is_bsm(self._last_query.prompt):
+            # The registry is the memory here; there is no lesson to distil.
+            if observation.content.strip():
+                self._add_message("user", f"FEEDBACK: {observation.content.strip()}")
+            if observation_marks_instance_complete(observation):
+                self.messages = []
+            return
+        super().observe(observation, next_query)
+
+    def reset(self) -> None:
+        # Fresh run_id, so the baseline arm recalls an empty registry.
+        super().reset()
+        self._scan_count = 0
+
+    # ---- registry <-> Mubit ----
+
+    def _load_registry(self) -> list[dict]:
+        """Read the registry back out of Mubit with a deterministic lookup.
+
+        Not ``recall()``: semantic search ranks and truncates (the server caps
+        evidence at 50, and Mubit's own auto-reflection lessons compete for
+        those slots), so transmitters flickered in and out between scans and
+        lost their hit counts. ``lookup()`` enumerates straight from storage.
+        """
+        if self._client is None:
+            return []
+        try:
+            records = self._client.lookup(match=[REGISTRY_MATCH], limit=LOOKUP_LIMIT)
+        except Exception:
+            logger.warning("Mubit lookup failed; scan runs registry-less", exc_info=True)
+            return []
+        newest, newest_scan = [], -1
+        for record in records or []:
+            metadata = record.get("metadata") or {}
+            if isinstance(metadata, str):
+                try:
+                    metadata = json.loads(metadata)
+                except ValueError:
+                    continue
+            entries, scan = loads_registry(metadata.get("content") or "")
+            if entries and scan > newest_scan:
+                newest, newest_scan = entries, scan
+        return dedupe(newest)
+
+    def _save_registry(self, registry: list[dict]) -> None:
+        """Upsert the whole registry as one entry."""
+        if self._client is None:
+            return
+        try:
+            self._client.remember(
+                content=dumps_registry(registry, self._scan_count),
+                intent="fact",
+                upsert_key=REGISTRY_KEY,
+                metadata={
+                    **REGISTRY_MATCH,
+                    "scan": self._scan_count,
+                    "transmitters": len(registry),
+                },
+                source="agent",
+                agent_id="clbench-mubit-bsm",
+                # Written at the end of one scan, read at the start of the
+                # next — block so it is there by then.
+                wait=True,
+            )
+        except Exception:
+            logger.warning("Mubit remember failed for the registry", exc_info=True)
+
+    # ---- BSM turn ----
 
     def _respond_bsm(self, query: Query) -> Response:
         self.interaction_count += 1
-        prompt = query.prompt
-
-        # Extract peaks from the current scan
-        peaks = _extract_peaks(prompt)
         self._scan_count += 1
 
-        # Merge current peaks into the registry
-        self._registry = _merge_into_registry(self._registry, peaks, self._scan_count)
+        registry = self._load_registry()
+        registry, changed = merge_peaks(registry, extract_peaks(query.prompt), self._scan_count)
+        self._save_registry(registry)
 
-        # Infer missing grid channels by pattern detection (NOT hardcoded)
-        self._registry = _infer_grid_channels(self._registry)
+        # Grid inference is a hypothesis over what was recalled: shown to the
+        # model, never written back.
+        view = infer_grid_channels(registry)
 
-        # Build the prompt with the registry injected
-        registry_block = _format_registry(self._registry)
-        registry_header = "=== ACCUMULATED TRANSMITTER REGISTRY ==="
-        registry_footer = "========================================="
-
-        scan_data = self._extract_scan_data(prompt)
-
-        full_prompt = (
-            f"{registry_header}\n{registry_block}\n{registry_footer}\n\n"
-            f"Current scan #{self._scan_count} peaks:\n{scan_data}\n\n"
+        self._add_message(
+            "user",
+            f"=== ACCUMULATED TRANSMITTER REGISTRY ===\n"
+            f"{format_registry(view)}\n"
+            f"=========================================\n\n"
+            f"Current scan #{self._scan_count} peaks:\n{self._extract_scan_data(query.prompt)}\n\n"
             f"Report ALL transmitters from the registry (including inferred and "
             f"tentative ones). Also add any new peaks from the current scan that "
             f"aren't in the registry yet. Do NOT fragment a single transmitter "
-            f"into multiple reports."
+            f"into multiple reports.",
         )
-
-        self._add_message("user", full_prompt)
-
-        llm_messages = self.messages.copy()
-        llm_messages.insert(0, {"role": "system", "content": BSM_SYSTEM_PROMPT})
 
         parsed, usage_event = self._genai_completion(
-            BSM_SYSTEM_PROMPT, llm_messages, query.response_schema
+            BSM_SYSTEM_PROMPT,
+            self._to_genai_contents(self.messages),
+            query.response_schema,
         )
-
         if usage_event is not None:
+            self._note_prompt_token_usage(usage_event.input_tokens)
             self.record_usage_event(usage_event)
 
-        # Post-filter: remove LLM-reported transmitters that don't match any
-        # registry entry. The registry accumulates real observations; extras
-        # the LLM invents (false positives in available gaps) hurt IoU.
-        parsed = self._filter_to_registry(parsed)
-
-        assistant_record = parsed.model_dump_json()
-        self._add_message("assistant", assistant_record)
+        parsed = self._filter_to_registry(parsed, view)
+        self._add_message("assistant", parsed.model_dump_json())
 
         response = Response(
             action=parsed,
@@ -434,164 +231,39 @@ class MubitBSMSystem(ContinualLearningSystem):
                 "interaction_count": self.interaction_count,
                 "system_type": "mubit_bsm",
                 "model": self.model,
-                "registry_size": len(self._registry),
-                "scan_peaks": len(peaks),
+                "mubit_run_id": self._run_id,
+                "registry_size": len(registry),
+                "registry_written": len(changed),
+                "scan_peaks": len(extract_peaks(query.prompt)),
             },
         )
         self._last_query = query
         self._last_response = response
         return response
 
-    def _filter_to_registry(self, report: BaseModel) -> BaseModel:
-        """Remove reported transmitters that don't match any registry entry.
+    def _filter_to_registry(self, report: BaseModel, view: list[dict]) -> BaseModel:
+        """Drop reported transmitters that match nothing in the registry.
 
-        The LLM sometimes invents spurious transmitters (e.g. at 14 MHz or
-        163.5 MHz) that land in available spectrum gaps and tank the IoU.
-        We filter the LLM's output to only keep transmitters that align with
-        an accumulated registry observation (within 6 MHz for wideband, 4 MHz
-        for narrowband).
-
-        This is NOT hardcoding the answer — the registry is built from real
-        observations. We're simply removing hallucinations the LLM adds on top.
+        The LLM invents the occasional transmitter in an empty part of the band,
+        and a false positive costs as much IoU as a miss. The registry is built
+        from real observations, so this removes hallucinations rather than
+        imposing an answer.
         """
-        if not self._registry:
-            return report
-
         transmitters = getattr(report, "transmitters", None)
-        if not transmitters:
+        if not view or not transmitters:
             return report
-
-        filtered = []
+        kept = []
         for tx in transmitters:
-            tx_freq = tx.center_freq
-            tx_bw = tx.bandwidth
-            is_wide = tx_bw >= 10
-
-            # Check if this transmitter matches a registry entry
-            threshold = 6.0 if is_wide else 4.0
-            matched = False
-            for entry in self._registry:
-                entry_wide = entry.get("is_wideband", entry["bandwidth"] >= 10)
-                if entry_wide != is_wide:
-                    continue
-                if abs(entry["center_freq"] - tx_freq) < threshold:
-                    matched = True
-                    break
-
-            if matched:
-                filtered.append(tx)
-            else:
-                # Also check inferred entries (grid-inferred widebands)
-                for entry in self._registry:
-                    if entry.get("inferred") and abs(entry["center_freq"] - tx_freq) < threshold:
-                        matched = True
-                        break
-                if matched:
-                    filtered.append(tx)
-
-        # Return a new report with filtered transmitters
-        report_type = type(report)
-        return report_type(transmitters=filtered)
-
-    def _observe_bsm(self, observation: Observation) -> None:
-        instance_complete = observation_marks_instance_complete(observation)
-        content = observation.content.strip()
-        if content:
-            self._add_message("user", f"FEEDBACK: {content}")
-        if instance_complete:
-            self.messages = []
+            wide = tx.bandwidth >= 10
+            threshold = 6.0 if wide else 4.0
+            if any(
+                is_wideband(e) == wide and abs(e["center_freq"] - tx.center_freq) < threshold
+                for e in view
+            ):
+                kept.append(tx)
+        return report.model_copy(update={"transmitters": kept})
 
     def _extract_scan_data(self, prompt: str) -> str:
-        """Extract just the scan metadata and peaks from the full prompt."""
-        lines = prompt.split("\n")
-        scan_lines = []
-        in_scan = False
-        for line in lines:
-            if "--- Scan" in line:
-                in_scan = True
-            if in_scan:
-                scan_lines.append(line)
-        return "\n".join(scan_lines) if scan_lines else prompt[-500:]
-
-    def _add_message(self, role: str, content: str) -> None:
-        self.messages.append({"role": role, "content": content})
-
-    def _genai_completion(
-        self,
-        system_content: str,
-        contents_or_messages: list[dict],
-        response_schema: type[BaseModel],
-    ) -> tuple[BaseModel, Optional[UsageEvent]]:
-        """Call google-genai with native response_schema structured output."""
-        if self._genai_client is None:
-            raise RuntimeError("google-genai client not initialized")
-
-        from concurrent.futures import ThreadPoolExecutor
-        from concurrent.futures._base import TimeoutError as FuturesTimeout
-        import time as _time
-
-        config: dict[str, Any] = {
-            "response_mime_type": "application/json",
-            "response_schema": response_schema,
-            "temperature": self.temperature,
-            "system_instruction": system_content,
-        }
-        if self.max_tokens:
-            config["max_output_tokens"] = self.max_tokens
-
-        # Convert messages to genai Content format
-        genai_contents = []
-        for msg in contents_or_messages:
-            role = "model" if msg["role"] == "assistant" else "user"
-            genai_contents.append({"role": role, "parts": [{"text": msg["content"]}]})
-
-        max_retries = 6
-        call_timeout = 120
-
-        for attempt in range(max_retries):
-            try:
-                with ThreadPoolExecutor(max_workers=1) as ex:
-                    future = ex.submit(
-                        self._genai_client.models.generate_content,
-                        model=self.model,
-                        contents=genai_contents,
-                        config=config,
-                    )
-                    response = future.result(timeout=call_timeout)
-                break
-            except FuturesTimeout:
-                logger.warning(
-                    "genai call timed out (attempt %d/%d)", attempt + 1, max_retries
-                )
-                if attempt == max_retries - 1:
-                    raise RuntimeError(f"genai timed out after {max_retries} attempts")
-                _time.sleep(2 ** attempt)
-            except Exception as exc:
-                msg = str(exc)
-                is_transient = any(
-                    c in msg
-                    for c in ("503", "429", "UNAVAILABLE", "500", "502", "504",
-                              "timeout", "Connection", "deadlocked")
-                )
-                if not is_transient or attempt == max_retries - 1:
-                    raise
-                _time.sleep(2 ** attempt)
-
-        parsed = response_schema.model_validate_json(response.text)
-
-        usage_event = None
-        usage = getattr(response, "usage_metadata", None)
-        if usage:
-            input_t = getattr(usage, "prompt_token_count", None) or 0
-            output_t = getattr(usage, "candidates_token_count", None) or 0
-            usage_event = UsageEvent(
-                call_type="completion",
-                model=self.model,
-                provider="google",
-                input_tokens=input_t,
-                output_tokens=output_t,
-                total_tokens=getattr(usage, "total_token_count", None)
-                or (input_t + output_t),
-            )
-
-        return parsed, usage_event
+        """Just the scan block, not the whole prompt."""
+        idx = prompt.find("--- Scan")
+        return prompt[idx:] if idx >= 0 else prompt[-500:]
