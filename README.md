@@ -42,7 +42,7 @@ Positioned against the [CL-Bench leaderboard](https://continual-learning-bench.c
 |---|---|---|---|
 | **Sales Prediction** | **+0.401 raw gain** (gpt-5), std 0.009, 5/5 runs beat baseline | claude-code +0.378 | **SOTA** |
 | **Cohort Studies** | +0.021 (gemini-3.7), 5/5 runs positive; run 5 = **+0.051 bits, the only absolutely-positive stateful score ever recorded on this task** | mem0 +0.030 (n.s.) | **Top-3, strongest profile** |
-| **Blind Spectrum Monitoring** | 71% best-run IoU; 31.8% g_b (structured registry) | ICL 29.4% g_b | **Leads** |
+| **Blind Spectrum Monitoring** | 56% IoU; 43.1% g_b (registry + fitted grid, no prior) | ICL 51% IoU, 29.4% g_b | **Leads** |
 | **Database Exploration** | +11.2% → +14.8% gain across the migration | icl +8.4% → +13.6% | **Adapts across the drift** |
 | **Exploitable Poker** | +10.8% (session-stateful + opponent observations) | (paper values unverifiable — see FINDINGS §7.3) | Positive |
 | **Codebase Adaptation** | **+0.055** (gpt-5), 4/5 runs positive, stateful 0.628 = highest absolute of any system | mem0 +0.157 (n.s.), ACE +0.083 | **Positive** |
@@ -73,16 +73,16 @@ The BSM task requires an agent to build an increasingly accurate model of a radi
 
 | System | IoU (avg) | Best Run | Normalized Gain | vs Stateless |
 |---|---|---|---|---|
-| **Mubit** | **64%** | **71%** | **+31.8%** | **+36%** |
+| **Mubit** | **56%** | **57%** | **+43.1%** | **+153%** |
 | ICL (paper best) | 51% | — | +29.4% | +115% |
 | Mem0 | 37% | — | +15.6% | +56% |
 | ACE | 22% | — | 0.0% | baseline |
 | ICL (baseline) | 34% | 36% | — | +44% |
 | Stateless (no memory) | 24% | — | — | — |
 
-Mubit's row is one artifact — `mubit-bsm-registry-3.5flash`, 3 runs at 0.597 / 0.711 / 0.608. Its own stateless arm measures 47% IoU, so its "vs Stateless" is relative to that, not to the 24% row.
+Mubit's row is one artifact — `mubit-bsm-noprior-3.5flash`, 3 runs at 0.531 / 0.567 / 0.570 against a 0.219 stateless arm, on the `default` schedule (90 scans, three stages). Reproduce with `analyze_results.py`.
 
-**Provenance:** these BSM figures were measured with a system prompt that carried a hardcoded channel-plan prior — the evaluated config's true 24 MHz spacing, center offsets, 15/5 MHz bandwidths and dormant slots. That prior has since been removed from the code, so the numbers above are not reproducible from the current tree and need re-running.
+**These numbers are measured without a channel-plan prior.** Earlier BSM figures — 65% IoU / +53.7%, and 64% / +31.8% — were produced with a system prompt that stated the evaluated config's true 24 MHz spacing, centre offsets, 15/5 MHz bandwidths and dormant slots. The model could recite the answer from the prompt. That prior is gone; the lattice is now fitted to what the registry observed. Removing it cost about 9 points of IoU against the comparable `mubit-bsm-v4` run (0.647 → 0.556) and the result still leads the board.
 
 ![Gain Comparison](charts/chart1_gain_comparison.png)
 
@@ -96,7 +96,7 @@ Mubit's row is one artifact — `mubit-bsm-registry-3.5flash`, 3 runs at 0.597 /
 
 ![BSM Learning Curve](charts/chart2_bsm_learning_curve.png)
 
-The curve plots the `mubit-bsm-v4-3.5flash` run, not the registry run in the table above: IoU rises from 24% on scan 1 to ~80–86% by scan 90 (stateful mean 65%) while its stateless arm stays flat at 24%. That run's unusually low stateless arm is the baseline artifact noted in FINDINGS §7.1, and like every BSM figure here it predates the prompt-prior removal.
+Mean of 3 runs against the stateless arm, `mubit-bsm-noprior-3.5flash`. IoU climbs from 0.23 on scan 1 to 0.71 by scan 90 while the stateless arm stays flat at 0.22 — the accumulation is the whole effect, and it is measured with no channel-plan prior in the prompt.
 
 ### Database Exploration — Concept Drift
 
@@ -130,7 +130,7 @@ Zero negative-gain runs on BSM — every run of every BSM configuration beats it
 
 | System | Beats ICL? | BSM IoU | DB Drift | Cost | Architecture |
 |---|---|---|---|---|---|
-| **Mubit** | **✅ Yes** | **64%** | **+3.6% (adapts)** | Low | Typed cognitive memory (SDM + graph + semantic fusion) |
+| **Mubit** | **✅ Yes** | **56%** | **+3.6% (adapts)** | Low | Typed cognitive memory (SDM + graph + semantic fusion) |
 | ICL | — (baseline) | 51% | +5.1% | Low | Full conversation history replay |
 | Mem0 | ❌ No | 37% | — | Low | LLM-extracted facts → vector search |
 | ACE | ❌ No | 22% | degrades | $62.8/run | Evolving context playbook |

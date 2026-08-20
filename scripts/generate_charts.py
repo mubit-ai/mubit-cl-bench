@@ -225,7 +225,8 @@ def chart_2_bsm_learning_curve():
     ax.set_title(d["title"], pad=12)
     ax.set_xlim(1, 90)
     ax.set_ylim(0, 1.05)
-    ax.yaxis.set_major_formatter(mticker.PercentFormatter(decimals=0))
+    # xmax=1: the series are fractions, and the default xmax=100 renders 0.22 as "0%".
+    ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1, decimals=0))
     ax.legend(loc="lower right", frameon=False)
     ax.grid(True, color=COLORS["grid"], linewidth=0.5)
     ax.set_axisbelow(True)
