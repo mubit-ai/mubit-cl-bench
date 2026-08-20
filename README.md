@@ -16,9 +16,9 @@ Two full suites submitted — gemini-3.7-flash and gpt-5.4. Sequential evaluatio
 
 | Rank | System | Agg. Reward ↑ | Agg. Gain ↑ | Avg. Cost |
 |------|--------|--------------|-------------|-----------|
-| **1** | **Mubit · Gemini 3.7 Flash** | **+0.303** | **+0.303** | **$18.16** |
+| **1** | **Mubit · Gemini 3.7 Flash** | **+0.255** | **+0.255** | **$18.16** |
 | 2 | ICL · Claude Sonnet 4.6 | +0.196 | +0.241 | $30.43 |
-| **3** | **Mubit · GPT-5.4** | **+0.190** | **+0.190** | **$14.49** |
+| **3** | **Mubit · GPT-5.4** | **+0.191** | **+0.191** | **$14.49** |
 | 4 | ICL · GPT-5.4 | +0.189 | +0.189 | $18.39 |
 | 5 | Claude Code · Sonnet 4.6 | +0.185 | +0.241 | $38.60 |
 | 6 | ICL · Claude Opus 4.7 | +0.183 | +0.195 | $49.62 |
@@ -31,8 +31,8 @@ Two full suites submitted — gemini-3.7-flash and gpt-5.4. Sequential evaluatio
 | 13 | ICL Notepad · Gemini 3.1 Pro Preview | +0.003 | +0.081 | $13.32 |
 | 14 | ICL · Gemini 3.1 Pro Preview | −0.076 | +0.036 | $15.23 |
 
-- **#1 by a 54% margin** on Agg. Reward (+0.303 vs the runner-up's +0.196), and #1 on Agg. Gain — computed by the benchmark's own pipeline (`scripts/generate_leaderboard.py`) on the submitted artifacts. The formulas were validated by reproducing every official leaderboard entry to its exact published number.
-- **Mubit · GPT-5.4 beats ICL · GPT-5.4 on its own model** (+0.190 vs +0.189) at lower cost ($14.49 vs $18.39) — making it the **cheapest GPT-5.4 system on the board**.
+- **#1 by a 30% margin** on Agg. Reward (+0.255 vs the runner-up's +0.196), and #1 on Agg. Gain — computed by the benchmark's own pipeline (`scripts/generate_leaderboard.py`) on the submitted artifacts. The formulas were validated by reproducing every official leaderboard entry to its exact published number.
+- **Mubit · GPT-5.4 beats ICL · GPT-5.4 on its own model** (+0.191 vs +0.189) at lower cost ($14.49 vs $18.39) — making it the **cheapest GPT-5.4 system on the board**.
 - **The only system with no negative task** — positive on all six, on both models. Every official entry has at least one.
 - Costs are token-derived from run telemetry (provider list prices incl. cache-read rates) under the board's accounting — sum across tasks of mean per-run cost; this method reproduces ICL·GPT-5.4's published $18.39 exactly.
 
@@ -42,7 +42,7 @@ Two full suites submitted — gemini-3.7-flash and gpt-5.4. Sequential evaluatio
 | Task | Best official | Mubit · Gemini 3.7 | Mubit · GPT-5.4 | Verdict |
 |---|---|---|---|---|
 | Sales prediction | +0.699 | **+0.789** | +0.409 | **Mubit leads** |
-| Blind spectrum monitoring | +0.376 | **+0.715** | +0.429 | **Mubit leads** |
+| Blind spectrum monitoring | +0.376 | **+0.429** | +0.431 | **Mubit leads** |
 | Cohort studies | +0.014 | **+0.120** | +0.121 | **Mubit leads** |
 | Codebase adaptation | +0.223 | +0.115 | **+0.134** | positive; ACE-family leads |
 | Exploitable poker | +0.208 | +0.043 | +0.025 | positive; ICL-family leads |
@@ -58,7 +58,7 @@ The BSM task requires an agent to build an increasingly accurate model of a radi
 
 ![BSM Learning Curve](charts/chart2_bsm_learning_curve.png)
 
-Mubit · gemini-3.7 climbs from the stateless baseline (0.23) through quartile means of **0.50 → 0.75 → 0.90 → 0.96**, ending at ~0.93 per-scan. Final-suite mean **0.781** (best run 0.864) vs the official field's best stateful ~0.51. Normalized gain **+49.5** — the largest single-task gain on the board.
+Mubit · gemini-3.7 climbs from the stateless baseline (0.22) through quartile means of **0.40 → 0.50 → 0.62 → 0.68**, ending at ~0.70 per-scan. Suite mean **0.554** (best run 0.582) vs the official field's best stateful ~0.51. Normalized gain **+30.1** — the largest single-task gain on the board.
 
 ### Database Exploration — memory earns its keep under drift
 
