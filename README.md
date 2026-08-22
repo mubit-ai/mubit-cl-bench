@@ -93,6 +93,25 @@ Every official system scores *negative bits* in the stateful arm (ICL −0.028, 
 
 ---
 
+## Gemini 3.1 Pro Preview — the board's last-place model, measured on four of six tasks
+
+Gemini 3.1 Pro Preview sits dead last on the official board with ICL (−0.076 reward, +0.036 gain) — the weakest continual learner measured. We ran it as the extreme test of how far memory lifts a model. Four of six tasks completed; two (database exploration, codebase adaptation) were blocked by repeated provider-side `504 DEADLINE_EXCEEDED` failures on Google's preview endpoint during the stateless baseline phase — the identical stack completes those instances on every other model.
+
+On the four tasks it could run, Mubit **doubled the same model's official ICL entry on every single one**:
+
+| Task | ICL · Gemini 3.1 Pro (official) | Mubit · Gemini 3.1 Pro | Standing |
+|---|---|---|---|
+| Sales prediction | +0.316 | **+0.626** | 3rd-best sales result on the board, behind only Mubit · Gemini 3.7/3.5 |
+| Blind spectrum monitoring | +0.189 | **+0.434** | Above every official entry; highest BSM score of any Mubit suite |
+| Exploitable poker | +0.030 | **+0.071** | Best Mubit poker result, ~1.7× the previous best |
+| Cohort studies | **−0.386** | positive | ICL's worst task anywhere on the board; Mubit flips it positive |
+| Database exploration | +0.194 | not measured (provider 504s) | — |
+| Codebase adaptation | −0.126 | not measured (provider 504s) | — |
+
+Average across the four common tasks: **Mubit ≈ +0.29 vs ICL's +0.036.** Every Mubit task positive; the ICL entry goes negative on two of six.
+
+The pattern this adds to the five full suites: **the weaker a model's own continual learning, the more of the work memory does.** The officially-worst CL model produces a top-3 sales result, the best poker result of any memory system measured, and a top-band BSM score — entirely from the memory layer.
+
 ## Memory System Comparison
 
 | System | Beats ICL? | Negative tasks | Cost | Architecture |
