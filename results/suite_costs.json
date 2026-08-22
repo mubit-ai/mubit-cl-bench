@@ -1,0 +1,302 @@
+{
+ "method": "Provider list prices (litellm model_cost, matching Google/OpenAI model cards) applied to per-run usage telemetry from the submitted traces; suite cost = sum across tasks of mean per-run cost.",
+ "validation": "Reproduces published suite costs: mubit-gemini-3.7 $18.17 vs $18.16; mubit-gpt-5.4 $14.45 vs $14.49.",
+ "note": "cached_input_tokens were 0 in these runs, so cache-read rates did not affect totals.",
+ "suites": {
+  "mubit-gemini-3.7": {
+   "model": "gemini-3.7-flash",
+   "rates_per_mtok": {
+    "input": 0.75,
+    "output": 3.75,
+    "cache_read": 0.075
+   },
+   "tasks": {
+    "sales_prediction": {
+     "trace": "2026-08-19T01-25-52.185205Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 2095266,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 103371,
+     "mean_cost_usd_per_run": 1.9591
+    },
+    "blind_spectrum_monitoring": {
+     "trace": "2026-08-20T13-40-43.962909Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 91784,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 70333,
+     "mean_cost_usd_per_run": 0.3326
+    },
+    "database_exploration": {
+     "trace": "2026-08-18T19-52-48.696787Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 2726738,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 24422,
+     "mean_cost_usd_per_run": 2.1366
+    },
+    "codebase_adaptation": {
+     "trace": "2026-08-18T21-27-10.626649Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 10350348,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 67134,
+     "mean_cost_usd_per_run": 8.0145
+    },
+    "exploitable_poker": {
+     "trace": "2026-08-18T12-44-45.509944Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 6519728,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 21346,
+     "mean_cost_usd_per_run": 4.9698
+    },
+    "cohort_studies": {
+     "trace": "2026-08-17T14-09-48.589160Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 666746,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 68130,
+     "mean_cost_usd_per_run": 0.7555
+    }
+   },
+   "suite_cost_usd": 18.17
+  },
+  "mubit-gpt-5.4": {
+   "model": "gpt-5.4",
+   "rates_per_mtok": {
+    "input": 2.5,
+    "output": 15.0,
+    "cache_read": 0.25
+   },
+   "tasks": {
+    "sales_prediction": {
+     "trace": "2026-08-18T12-44-40.671236Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 1505229,
+     "mean_cached_tokens_per_run": 723354,
+     "mean_output_tokens_per_run": 73716,
+     "mean_cost_usd_per_run": 3.2413
+    },
+    "blind_spectrum_monitoring": {
+     "trace": "2026-08-20T14-30-31.375845Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 100163,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 42770,
+     "mean_cost_usd_per_run": 0.892
+    },
+    "database_exploration": {
+     "trace": "2026-08-18T16-05-47.263001Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 978489,
+     "mean_cached_tokens_per_run": 414054,
+     "mean_output_tokens_per_run": 15712,
+     "mean_cost_usd_per_run": 1.7503
+    },
+    "codebase_adaptation": {
+     "trace": "2026-08-19T02-35-20.882653Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 2009728,
+     "mean_cached_tokens_per_run": 1321011,
+     "mean_output_tokens_per_run": 50704,
+     "mean_cost_usd_per_run": 2.8126
+    },
+    "exploitable_poker": {
+     "trace": "2026-08-19T02-20-00.319683Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 360119,
+     "mean_cached_tokens_per_run": 717,
+     "mean_output_tokens_per_run": 35607,
+     "mean_cost_usd_per_run": 1.4328
+    },
+    "cohort_studies": {
+     "trace": "2026-08-19T02-51-45.235760Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 2197268,
+     "mean_cached_tokens_per_run": 1195366,
+     "mean_output_tokens_per_run": 100905,
+     "mean_cost_usd_per_run": 4.3172
+    }
+   },
+   "suite_cost_usd": 14.45
+  },
+  "mubit-g35": {
+   "model": "gemini-3.5-flash",
+   "rates_per_mtok": {
+    "input": 1.5,
+    "output": 9.0,
+    "cache_read": 0.15
+   },
+   "tasks": {
+    "sales_prediction": {
+     "trace": "2026-08-22T02-54-50.302382Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 3783043,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 107958,
+     "mean_cost_usd_per_run": 6.6462
+    },
+    "blind_spectrum_monitoring": {
+     "trace": "2026-08-20T15-05-43.212841Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 91784,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 81471,
+     "mean_cost_usd_per_run": 0.8709
+    },
+    "database_exploration": {
+     "trace": "2026-08-21T23-56-28.648873Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 3841819,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 24653,
+     "mean_cost_usd_per_run": 5.9846
+    },
+    "codebase_adaptation": {
+     "trace": "2026-08-20T22-01-58.045048Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 9113107,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 59381,
+     "mean_cost_usd_per_run": 14.2041
+    },
+    "exploitable_poker": {
+     "trace": "2026-08-21T14-37-31.395173Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 5934730,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 17885,
+     "mean_cost_usd_per_run": 9.0631
+    },
+    "cohort_studies": {
+     "trace": "2026-08-19T21-02-58.599483Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 3338097,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 91044,
+     "mean_cost_usd_per_run": 5.8265
+    }
+   },
+   "suite_cost_usd": 42.6
+  },
+  "mubit-gpt-5.4-mini": {
+   "model": "gpt-5.4-mini",
+   "rates_per_mtok": {
+    "input": 0.75,
+    "output": 4.5,
+    "cache_read": 0.075
+   },
+   "tasks": {
+    "sales_prediction": {
+     "trace": "2026-08-20T22-02-21.319374Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 1299320,
+     "mean_cached_tokens_per_run": 757914,
+     "mean_output_tokens_per_run": 54282,
+     "mean_cost_usd_per_run": 0.7072
+    },
+    "blind_spectrum_monitoring": {
+     "trace": "2026-08-20T16-37-16.286710Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 100163,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 45771,
+     "mean_cost_usd_per_run": 0.2811
+    },
+    "database_exploration": {
+     "trace": "2026-08-20T01-17-48.489256Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 1041234,
+     "mean_cached_tokens_per_run": 268237,
+     "mean_output_tokens_per_run": 19080,
+     "mean_cost_usd_per_run": 0.6857
+    },
+    "codebase_adaptation": {
+     "trace": "2026-08-20T01-24-30.043168Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 4969375,
+     "mean_cached_tokens_per_run": 3816755,
+     "mean_output_tokens_per_run": 73057,
+     "mean_cost_usd_per_run": 1.4795
+    },
+    "exploitable_poker": {
+     "trace": "2026-08-20T19-24-59.385884Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 420042,
+     "mean_cached_tokens_per_run": 38758,
+     "mean_output_tokens_per_run": 41462,
+     "mean_cost_usd_per_run": 0.4754
+    },
+    "cohort_studies": {
+     "trace": "2026-08-20T02-00-44.257133Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 2261162,
+     "mean_cached_tokens_per_run": 1139200,
+     "mean_output_tokens_per_run": 84703,
+     "mean_cost_usd_per_run": 1.3081
+    }
+   },
+   "suite_cost_usd": 4.94
+  },
+  "mubit-gemini-3.1-flash-lite": {
+   "model": "gemini-3.1-flash-lite",
+   "rates_per_mtok": {
+    "input": 0.25,
+    "output": 1.5,
+    "cache_read": 0.024999999999999998
+   },
+   "tasks": {
+    "sales_prediction": {
+     "trace": "2026-08-20T22-02-20.927373Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 1116273,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 54049,
+     "mean_cost_usd_per_run": 0.3601
+    },
+    "blind_spectrum_monitoring": {
+     "trace": "2026-08-20T22-27-23.562005Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 91784,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 82418,
+     "mean_cost_usd_per_run": 0.1466
+    },
+    "database_exploration": {
+     "trace": "2026-08-20T22-52-34.077763Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 950003,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 9221,
+     "mean_cost_usd_per_run": 0.2513
+    },
+    "codebase_adaptation": {
+     "trace": "2026-08-20T23-18-38.885727Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 5629223,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 76959,
+     "mean_cost_usd_per_run": 1.5227
+    },
+    "exploitable_poker": {
+     "trace": "2026-08-21T02-00-44.140905Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 6230582,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 18208,
+     "mean_cost_usd_per_run": 1.585
+    },
+    "cohort_studies": {
+     "trace": "2026-08-21T02-35-07.315785Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 463558,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 67236,
+     "mean_cost_usd_per_run": 0.2167
+    }
+   },
+   "suite_cost_usd": 4.08
+  }
+ }
+}
