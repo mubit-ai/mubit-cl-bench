@@ -75,3 +75,17 @@ Rates: input $0.25/M · output $1.50/M · cache-read $0.02/M
 | Poker | 6,230,582 | 0 | 18,208 | $1.58 |
 | Cohort | 463,558 | 0 | 67,236 | $0.22 |
 | **Suite** | | | | **$4.08** |
+
+## Mubit · Gemini 3 Flash Preview — suite total $11.34
+
+Rates: input $0.50/M · output $3.00/M · cache-read $0.50/M
+
+| Task | Cost/run |
+|---|---:|
+| Sales | $1.23 |
+| BSM | $0.21 |
+| DB | $1.16 |
+| Codebase | $3.62 |
+| Poker | $3.91 |
+| Cohort | $1.21 |
+| **Suite** | **$11.34** |

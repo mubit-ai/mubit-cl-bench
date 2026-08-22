@@ -297,6 +297,65 @@
     }
    },
    "suite_cost_usd": 4.08
+  },
+  "mubit-gemini-3-flash-preview": {
+   "model": "gemini-3-flash-preview",
+   "rates_per_mtok": {
+    "input": 0.5,
+    "output": 3.0,
+    "cache_read": 0.5
+   },
+   "tasks": {
+    "sales_prediction": {
+     "trace": "2026-08-21T03-25-16.351236Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 2105962,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 59155,
+     "mean_cost_usd_per_run": 1.2304
+    },
+    "blind_spectrum_monitoring": {
+     "trace": "2026-08-21T05-18-09.365414Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 91784,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 55157,
+     "mean_cost_usd_per_run": 0.2114
+    },
+    "database_exploration": {
+     "trace": "2026-08-22T03-52-07.802223Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 2207703,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 17051,
+     "mean_cost_usd_per_run": 1.155
+    },
+    "codebase_adaptation": {
+     "trace": "2026-08-22T06-21-20.452813Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 6677168,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 93983,
+     "mean_cost_usd_per_run": 3.6205
+    },
+    "exploitable_poker": {
+     "trace": "2026-08-22T13-51-46.256332Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 7646970,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 29006,
+     "mean_cost_usd_per_run": 3.9105
+    },
+    "cohort_studies": {
+     "trace": "2026-08-22T15-42-37.697194Z",
+     "runs": 5,
+     "mean_input_tokens_per_run": 1907533,
+     "mean_cached_tokens_per_run": 0,
+     "mean_output_tokens_per_run": 84480,
+     "mean_cost_usd_per_run": 1.2072
+    }
+   },
+   "suite_cost_usd": 11.34
   }
  }
 }
