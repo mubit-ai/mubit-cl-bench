@@ -17,15 +17,15 @@ Five full suites measured — gemini-3.7-flash, gemini-3.5-flash, gpt-5.4, gpt-5
 | Rank | System | Agg. Reward ↑ | Agg. Gain ↑ | Avg. Cost |
 |------|--------|--------------|-------------|-----------|
 | **1** | **Mubit · Gemini 3.7 Flash** | **+0.255** | **+0.255** | **$18.16** |
-| **2** | **Mubit · Gemini 3.5 Flash** | **+0.238** | **+0.238** | — |
+| **2** | **Mubit · Gemini 3.5 Flash** | **+0.238** | **+0.238** | $42.60 |
 | 3 | ICL · Claude Sonnet 4.6 | +0.196 | +0.241 | $30.43 |
 | **4** | **Mubit · GPT-5.4** | **+0.191** | **+0.191** | **$14.49** |
 | 5 | ICL · GPT-5.4 | +0.189 | +0.189 | $18.39 |
 | 6 | Claude Code · Sonnet 4.6 | +0.185 | +0.241 | $38.60 |
 | 7 | ICL · Claude Opus 4.7 | +0.183 | +0.195 | $49.62 |
 | 8 | Mem0 · GPT-5.4 | +0.148 | +0.224 | $18.34 |
-| **9** | **Mubit · GPT-5.4 Mini** | **+0.135** | **+0.135** | — |
-| **10** | **Mubit · Gemini 3.1 Flash-Lite** | **+0.134** | **+0.134** | — |
+| **9** | **Mubit · GPT-5.4 Mini** | **+0.135** | **+0.135** | **$4.94** |
+| **10** | **Mubit · Gemini 3.1 Flash-Lite** | **+0.134** | **+0.134** | **$4.08** |
 | 11 | ICL Notepad · Claude Sonnet 4.6 | +0.132 | +0.182 | $31.53 |
 | 12 | ICL Notepad · GPT-5.4 | +0.104 | +0.156 | $14.28 |
 | 13 | ICL · Gemini 3 Flash | +0.092 | +0.155 | $7.60 |
@@ -36,7 +36,7 @@ Five full suites measured — gemini-3.7-flash, gemini-3.5-flash, gpt-5.4, gpt-5
 
 - **#1 and #2 on the board** — Mubit · Gemini 3.7 Flash (+0.255) and Mubit · Gemini 3.5 Flash (+0.238) hold the top two spots, 21% clear of the best non-Mubit entry (ICL · Claude Sonnet 4.6, +0.196). All numbers computed by the benchmark's own pipeline (`scripts/generate_leaderboard.py`) on the submitted artifacts; the formulas were validated by reproducing every official leaderboard entry to its exact published number.
 - **Mubit · GPT-5.4 beats ICL · GPT-5.4 on its own model** (+0.191 vs +0.189) at lower cost ($14.49 vs $18.39) — making it the **cheapest GPT-5.4 system on the board**.
-- **The cheapest models on the board land in the top 10.** Mubit · GPT-5.4 Mini (+0.135) and Mubit · Gemini 3.1 Flash-Lite (+0.134) both outrank every ICL Notepad entry — including ICL Notepad · Claude Sonnet 4.6, a roughly 30× more expensive setup.
+- **The cheapest models on the board land in the top 10.** Mubit · GPT-5.4 Mini (+0.135, **$4.94**) and Mubit · Gemini 3.1 Flash-Lite (+0.134, **$4.08**) both outrank every ICL Notepad entry — including ICL Notepad · Claude Sonnet 4.6 at $31.53 — and are the **two cheapest full suites on the board** (cheapest official entry: $7.60).
 - **No other system is positive on all six tasks** — Mubit is, on four of five models (gemini-3.7-flash, gemini-3.5-flash, gpt-5.4, gpt-5.4-mini); flash-lite is positive on five of six. Every official entry has at least one negative task.
 - Costs are token-derived from run telemetry (provider list prices incl. cache-read rates) under the board's accounting — sum across tasks of mean per-run cost; this method reproduces ICL·GPT-5.4's published $18.39 exactly.
 
