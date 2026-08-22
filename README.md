@@ -1,12 +1,12 @@
 # Mubit on CL-Bench
 
-> **Mubit is the only memory system that consistently beats in-context learning on the Continual Learning Bench — #1 and #2 on the board, measured across five models.**
+> **Mubit is the only memory system that consistently beats in-context learning on the Continual Learning Bench — #1 and #2 on the board, measured across six models.**
 
 Benchmarking [Mubit](https://console.mubit.ai) as an assistive memory system on the [Continual Learning Bench (CL-Bench)](https://github.com/pgasawa/continual-learning-bench) — the expert-validated benchmark that measures whether AI agents genuinely improve through sequential experience.
 
 The CL-Bench paper's headline finding: **dedicated memory systems (Mem0, ACE, ICL Notepad) all underperform naive in-context learning.** Mubit breaks this pattern.
 
-Five full suites measured — gemini-3.7-flash, gemini-3.5-flash, gpt-5.4, gpt-5.4-mini, and gemini-3.1-flash-lite. Sequential evaluation, a fresh Mubit instance per task, 5 runs × 6 tasks per entry.
+Six full suites measured — gemini-3.7-flash, gemini-3.5-flash, gpt-5.4, gpt-5.4-mini, gemini-3.1-flash-lite, and gemini-3-flash-preview. Sequential evaluation, a fresh Mubit instance per task, 5 runs × 6 tasks per entry.
 
 ---
 
@@ -22,22 +22,23 @@ Five full suites measured — gemini-3.7-flash, gemini-3.5-flash, gpt-5.4, gpt-5
 | **4** | **Mubit · GPT-5.4** | **+0.191** | **+0.191** | **$14.49** |
 | 5 | ICL · GPT-5.4 | +0.189 | +0.189 | $18.39 |
 | 6 | Claude Code · Sonnet 4.6 | +0.185 | +0.241 | $38.60 |
-| 7 | ICL · Claude Opus 4.7 | +0.183 | +0.195 | $49.62 |
-| 8 | Mem0 · GPT-5.4 | +0.148 | +0.224 | $18.34 |
-| **9** | **Mubit · GPT-5.4 Mini** | **+0.135** | **+0.135** | **$4.94** |
-| **10** | **Mubit · Gemini 3.1 Flash-Lite** | **+0.134** | **+0.134** | **$4.08** |
-| 11 | ICL Notepad · Claude Sonnet 4.6 | +0.132 | +0.182 | $31.53 |
-| 12 | ICL Notepad · GPT-5.4 | +0.104 | +0.156 | $14.28 |
-| 13 | ICL · Gemini 3 Flash | +0.092 | +0.155 | $7.60 |
-| 14 | ACE · GPT-5.4 | +0.066 | +0.077 | $62.75 |
-| 15 | Codex · GPT-5.4 | +0.057 | +0.120 | $27.21 |
-| 16 | ICL Notepad · Gemini 3.1 Pro Preview | +0.003 | +0.081 | $13.32 |
-| 17 | ICL · Gemini 3.1 Pro Preview | −0.076 | +0.036 | $15.23 |
+| **7** | **Mubit · Gemini 3 Flash Preview** | **+0.185** | **+0.185** | **$11.34** |
+| 8 | ICL · Claude Opus 4.7 | +0.183 | +0.195 | $49.62 |
+| 9 | Mem0 · GPT-5.4 | +0.148 | +0.224 | $18.34 |
+| **10** | **Mubit · GPT-5.4 Mini** | **+0.135** | **+0.135** | **$4.94** |
+| **11** | **Mubit · Gemini 3.1 Flash-Lite** | **+0.134** | **+0.134** | **$4.08** |
+| 12 | ICL Notepad · Claude Sonnet 4.6 | +0.132 | +0.182 | $31.53 |
+| 13 | ICL Notepad · GPT-5.4 | +0.104 | +0.156 | $14.28 |
+| 14 | ICL · Gemini 3 Flash | +0.092 | +0.155 | $7.60 |
+| 15 | ACE · GPT-5.4 | +0.066 | +0.077 | $62.75 |
+| 16 | Codex · GPT-5.4 | +0.057 | +0.120 | $27.21 |
+| 17 | ICL Notepad · Gemini 3.1 Pro Preview | +0.003 | +0.081 | $13.32 |
+| 18 | ICL · Gemini 3.1 Pro Preview | −0.076 | +0.036 | $15.23 |
 
 - **#1 and #2 on the board** — Mubit · Gemini 3.7 Flash (+0.255) and Mubit · Gemini 3.5 Flash (+0.238) hold the top two spots, 21% clear of the best non-Mubit entry (ICL · Claude Sonnet 4.6, +0.196). All numbers computed by the benchmark's own pipeline (`scripts/generate_leaderboard.py`) on the submitted artifacts; the formulas were validated by reproducing every official leaderboard entry to its exact published number.
 - **Mubit · GPT-5.4 beats ICL · GPT-5.4 on its own model** (+0.191 vs +0.189) at lower cost ($14.49 vs $18.39) — making it the **cheapest GPT-5.4 system on the board**.
 - **The cheapest models on the board land in the top 10.** Mubit · GPT-5.4 Mini (+0.135, **$4.94**) and Mubit · Gemini 3.1 Flash-Lite (+0.134, **$4.08**) both outrank every ICL Notepad entry — including ICL Notepad · Claude Sonnet 4.6 at $31.53 — and are the **two cheapest full suites on the board** (cheapest official entry: $7.60).
-- **No other system is positive on all six tasks** — Mubit is, on four of five models (gemini-3.7-flash, gemini-3.5-flash, gpt-5.4, gpt-5.4-mini); flash-lite is positive on five of six. Every official entry has at least one negative task.
+- **No other system is positive on all six tasks** — Mubit is, on four of six models (gemini-3.7-flash, gemini-3.5-flash, gpt-5.4, gpt-5.4-mini); flash-lite is positive on five of six. The one clearly negative task across all suites is gemini-3-flash-preview poker — where the stateless model posts the strongest natural poker baseline measured (+240 raw) and the session-stateful memory configuration reduced it. Memory lifts every model that starts weak; on the board's one naturally-strong poker player it got in the way. Every official entry has at least one negative task.
 - Costs are token-derived from run telemetry (provider list prices incl. cache-read rates) under the board's accounting — sum across tasks of mean per-run cost; this method reproduces ICL·GPT-5.4's published $18.39 exactly.
 
 
